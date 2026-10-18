@@ -67,7 +67,11 @@ class Backtester:
 
             mids = {s: price_cols[s][i] for s in ALL_SYMBOLS if s in price_cols}
             fair, unc = self.estimator.fair_values_with_uncertainty()
-            for d in decide(fair, mids, pf.positions, self.cfg, uncertainty=unc):
+            # opt-in gate: hold off on the configured symbols until a final damage report
+            tradable = None
+            if self.cfg.gate_until_report and not self.estimator.reported_rounds:
+                tradable = {s for s in ALL_SYMBOLS if s not in self.cfg.gate_until_report}
+            for d in decide(fair, mids, pf.positions, self.cfg, uncertainty=unc, tradable=tradable):
                 if d.order != 0:
                     pf.fill(d.symbol, d.order, d.executable, mids[d.symbol])
                     cost_basis[d.symbol] += d.order * d.executable

@@ -30,6 +30,9 @@ class StrategyConfig:
     edge_scale_frac: float = 0.02  # excess edge (as frac of mid) that maps to full-limit position
     max_trade_per_step_frac: float = 0.34  # per-step order cap as fraction of limit (liquidity model)
     symbols: tuple[str, ...] = tuple(ALL_SYMBOLS)
+    # improvement (opt-in): symbols only traded once a final damage report has arrived.
+    # Empty => baseline behaviour (trade everything subject to the uncertainty gate).
+    gate_until_report: frozenset[str] = frozenset()
 
 
 @dataclass
@@ -52,12 +55,16 @@ def decide(
     positions: dict[str, int],
     cfg: StrategyConfig,
     uncertainty: dict[str, float] | None = None,
+    tradable: set[str] | None = None,
 ) -> list[Decision]:
     """Return one :class:`Decision` per tradable symbol with valid mid and fair value.
 
     If ``uncertainty`` (per-symbol 1-sigma on the fair value) is given, a trade is only
     taken when the edge also exceeds ``uncertainty_k`` sigmas; this gates trading to
     moments when we genuinely know more than the house (e.g. just after a damage report).
+
+    ``tradable`` (optional) restricts which symbols may be traded this step; symbols not in
+    the set are forced to a flat target (used by the opt-in ``gate_until_report`` logic).
     """
     uncertainty = uncertainty or {}
     decisions: list[Decision] = []
@@ -65,6 +72,8 @@ def decide(
         mid = mids.get(sym)
         fv = fair.get(sym)
         if mid is None or fv is None or mid <= 0:
+            continue
+        if tradable is not None and sym not in tradable:
             continue
         bid, ask = executable_prices(mid, cfg)
         required = (
@@ -106,13 +115,14 @@ def decide_live(
     positions: dict[str, int],
     cfg: StrategyConfig,
     uncertainty: dict[str, float] | None = None,
+    tradable: set[str] | None = None,
 ) -> list[Decision]:
     """Decision logic for live trading using *real* executable bid/ask.
 
     Same thresholds as :func:`decide`, but the executable cost is the actual quoted spread
     rather than the synthetic ``half_spread`` (so the half-spread term is dropped from the
     required edge; the cushion and uncertainty gate still apply). ``books`` maps symbol to
-    ``(bid, ask)``.
+    ``(bid, ask)``. ``tradable`` (optional) restricts which symbols may trade this step.
     """
     uncertainty = uncertainty or {}
     decisions: list[Decision] = []
@@ -120,6 +130,8 @@ def decide_live(
         fv = fair.get(sym)
         bid, ask = books.get(sym, (None, None))
         if fv is None or bid is None or ask is None or bid <= 0 or ask <= 0:
+            continue
+        if tradable is not None and sym not in tradable:
             continue
         mid = 0.5 * (bid + ask)
         required = cfg.cushion_abs + cfg.cushion_frac * mid + cfg.uncertainty_k * uncertainty.get(sym, 0.0)

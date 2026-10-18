@@ -124,7 +124,38 @@ key and human approval:
    quote/orderbook/ack/snapshot shapes (see "Confirmed vs assumed" in [EXCHANGE.md](EXCHANGE.md)).
 6. **Go live (separate approval).** Only after the above: `CTC_DRY_RUN=false` + `ctc-bot --live`.
 
-### Strategy improvements worth trying (research side)
+## Phase 8 — strategy improvements evaluated on held-out seasons
+
+An opt-in refinement was added and evaluated honestly: fit on train (360), **select on
+validation (120)**, report on the untouched **test (120)** split. Reproduce with
+`ctc-strategy-eval` (writes `research/results/strategy_eval.json`). The baseline
+`StrategyConfig` is unchanged and remains the package default.
+
+The improvement is a per-symbol `gate_until_report` filter (hold off trading the configured
+symbols until a final damage report arrives) plus a more conservative uncertainty cushion
+variant. Held-out **TEST** results (mean PnL / season):
+
+| Variant | Mean PnL | Median | p05 (tail) | Trades | Spread $ | Sharpe-like |
+|---------|---------:|-------:|-----------:|-------:|---------:|------------:|
+| **baseline** | 1,099 | 1,304 | −12,672 | 913 | 2,100 | 0.14 |
+| gate_rebuilders | 1,102 | 1,304 | −12,672 | 909 | 2,092 | 0.14 |
+| gate_reb_islands | **1,119** | **1,554** | −13,053 | 875 | 2,007 | 0.14 |
+| conservative (k=2.5) | 352 | 887 | **−9,363** | 575 | 1,168 | 0.07 |
+
+**Honest reading:** the gates give only a *marginal* improvement — gating rebuilders alone is
+essentially a no-op because the existing **uncertainty gate already suppresses** most
+pre-report rebuilder trades (so the earlier "rebuilders are the leak" hypothesis is only
+weakly actionable here). Gating rebuilders **and** island businesses nudges mean PnL +1.9%
+and median +19% while cutting churn/spread ~4–5%, at a slightly worse tail. The
+`conservative` variant roughly **cuts tail risk and churn by ~25–45%** but gives up most of
+the mean PnL. No variant dominates, so the **baseline remains the default**; `gate_reb_islands`
+is a reasonable low-churn option and the knobs (`gate_until_report`, `uncertainty_k`) are
+exposed for live tuning.
+
+The single biggest remaining lever is still the **pre-report damage forecaster** (see below),
+not the trade-gating logic.
+
+### Further strategy improvements worth trying (research side)
 
 * Gate rebuilder (and island-business) trades until a damage report arrives; let insurers
   trade on the season-loss estimate earlier.

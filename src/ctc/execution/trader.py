@@ -69,7 +69,10 @@ class LiveTrader:
         }
         gross = gross_exposure(self.state.positions, mids)
 
-        decisions = decide_live(fair, books, self.state.positions, self.strat, unc)
+        tradable = None
+        if self.strat.gate_until_report and not self.state.estimator.reported_rounds:
+            tradable = {s for s in self.state.positions if s not in self.strat.gate_until_report}
+        decisions = decide_live(fair, books, self.state.positions, self.strat, unc, tradable=tradable)
         for d in decisions:
             if d.order == 0:
                 continue

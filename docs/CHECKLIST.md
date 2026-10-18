@@ -28,7 +28,8 @@ state-changing actions.
 * ✅ Dry-run is the default; live submission requires `CTC_DRY_RUN=false` **and** `--live`.
 * ✅ `.env` gitignored (mode 600); key never logged/printed/committed.
 * ✅ Read-only probe run and recorded honestly (public 200, auth 401).
-* 🟡 Strategy improvements on held-out seasons (Phase 8) — baseline kept; in progress.
+* ✅ Strategy improvements evaluated on held-out seasons (Phase 8) — `ctc-strategy-eval`;
+  baseline kept as default (gates give only marginal held-out gains; see HANDOFF.md).
 
 ## Immediate next actions (for whoever resumes)
 

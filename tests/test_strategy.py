@@ -83,3 +83,20 @@ def test_skips_symbols_without_price_or_fair():
 def test_decision_dataclass_shape():
     d = Decision(symbol="X", target=1, order=1, edge=0.5, executable=10.0)
     assert d.symbol == "X" and d.order == 1
+
+
+def test_tradable_filter_gates_symbols():
+    cfg = StrategyConfig()
+    fair = {"PORT": 120.0, "ISLE": 70.0}
+    mids = {"PORT": 100.0, "ISLE": 50.0}
+    # with PORT excluded from the tradable set, no PORT decision is produced
+    syms = {d.symbol for d in decide(fair, mids, {}, cfg, tradable={"ISLE"})}
+    assert syms == {"ISLE"}
+    # None (default) => both symbols considered
+    syms_all = {d.symbol for d in decide(fair, mids, {}, cfg, tradable=None)}
+    assert {"PORT", "ISLE"} <= syms_all
+
+
+def test_gate_until_report_is_opt_in_default_empty():
+    # the baseline config does not gate anything
+    assert StrategyConfig().gate_until_report == frozenset()

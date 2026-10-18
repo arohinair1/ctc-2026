@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ctc"
+version = "0.1.0"
+description = "Cornell Trading Competition 2026 - Systematic Equities research & trading baseline"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "scipy>=1.10",
+    "scikit-learn>=1.3",
+    "matplotlib>=3.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "ruff>=0.4",
+]
+live = [
+    "websockets>=14",
+]
+
+[project.scripts]
+ctc-validate = "ctc.data.validate:main"
+ctc-eda = "ctc.research.eda:main"
+ctc-fit = "ctc.research.fit:main"
+ctc-forecast-eval = "ctc.research.forecast_eval:main"
+ctc-backtest = "ctc.research.run_backtest:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ctc = ["data/case.json", "models/fitted_params.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E741"]

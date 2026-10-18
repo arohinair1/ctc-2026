@@ -1,12 +1,22 @@
-# Historical datasets
+# Historical datasets (download + extract hurricane-season-research.zip)
 data/raw/
 data/processed/
+
+# Generated research artifacts (reproducible via ctc-* commands)
+research/results/*.csv
+research/results/*.png
+research/results/*.parquet
+research/results/figures/
 
 # Python
 __pycache__/
 *.pyc
 .venv/
 .pytest_cache/
+*.egg-info/
+build/
+dist/
+.mpl_cache/
 .ruff_cache/
 
 # Secrets

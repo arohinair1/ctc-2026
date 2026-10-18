@@ -1,20 +1,38 @@
 # Handoff — CTC 2026 Systematic Equities
 
-Status of the research/trading baseline on branch `feat/research-baseline`, and what is
-left before and during the event. Companion to [RESEARCH.md](RESEARCH.md).
+Status of the research **and live-bot** baseline on branch `feat/research-baseline`, and what
+is left before and during the event. Companion docs: [ARCHITECTURE.md](ARCHITECTURE.md),
+[EXCHANGE.md](EXCHANGE.md), [BOT_OPERATIONS.md](BOT_OPERATIONS.md), [RISK.md](RISK.md),
+[TESTNET.md](TESTNET.md), [CHECKLIST.md](CHECKLIST.md), [RESEARCH.md](RESEARCH.md).
 
-## What is done (Phases 1–7)
+## TL;DR for whoever resumes
+
+* Research (valuation + forecasting + backtest) is **done and verified**.
+* The **live stack is built and tested offline**: async exchange client (REST+WS, reconnect,
+  rate limit), live state (seq dedup, season rollover, snapshot resync), risk manager, trader
+  (dry-run/kill-switch gated), recorder/replay, and probe. **128 tests pass; lint clean.**
+* The only blocker to live work is a **valid/active bot key** — the current key returns
+  `401 Invalid API key` (public endpoint works). See [TESTNET.md](TESTNET.md).
+* **Do not place/cancel real orders without explicit human approval.** The exact first test
+  (1-lot PORT place+cancel, far from market) is written up in [TESTNET.md](TESTNET.md).
+
+## What is done
 
 * **Phase 1–3** — project scaffolding, typed data loader/validator, wind + outage model,
   fundamental valuation models for all 12 symbols.
 * **Phase 4–5** — forecast/information-quality analysis, leakage-safe `SeasonEstimator`,
   event-driven backtester + baseline strategy + risk limits.
-* **Phase 6** — automated test suite (75 tests) + GitHub Actions CI (lint + format +
-  pytest on Python 3.10–3.13).
-* **Phase 7** — this handoff + research write-up.
+* **Phase 6 (research)** — automated test suite + GitHub Actions CI (lint + format + pytest
+  on Python 3.10–3.13).
+* **Live Phases 2–7** — `src/ctc/execution/` (settings, models, log, client, state, risk,
+  trader, recorder, runner); `decide_live` on real bid/ask; `build_live_estimator()` +
+  packaged model artifacts so the bot runs without the raw dataset; read-only testnet probe
+  (recorded honestly); feed recording + replay; full execution test suite incl. deterministic
+  e2e simulation.
 
-Everything is reproducible with the `ctc-*` CLIs (`ctc-validate`, `ctc-eda`, `ctc-fit`,
-`ctc-forecast-eval`, `ctc-backtest`).
+Everything is reproducible with the `ctc-*` CLIs: research (`ctc-validate`, `ctc-eda`,
+`ctc-fit`, `ctc-forecast-eval`, `ctc-backtest`, `ctc-build-live`) and live (`ctc-bot`,
+`ctc-bot-probe`, `ctc-bot-replay`, `ctc-record`).
 
 ## Official pre-event checklist (case packet §7)
 
@@ -24,14 +42,15 @@ Everything is reproducible with the `ctc-*` CLIs (`ctc-validate`, `ctc-eda`, `ct
 | 2 | Load data with `history.py`, run the reference code | ✅ Done | `ctc-eda` reproduces the 69.6% advisory accuracy exactly |
 | 3 | Build a valuation model per company (damage, outages, season losses) | ✅ Done | All 12 symbols; held-out MAE < 1% of start for 10/12 (see below) |
 | 4 | Measure official/wire accuracy and how early each identifies the pattern | ✅ Done | `ctc-forecast-eval` → `forecast_eval.json` |
-| 5 | Sign in on the testnet, join a team, get a bot key | ⛔ Pending | Testnet not wired up; needs captain-issued bot key |
-| 6 | Connect bot, subscribe to news, place + cancel an order | ⛔ Pending | `ctc/execution/` is a stub (see below) |
-| 7 | Stay connected across season rollovers | ⛔ Pending | Requires the live client |
-| 8 | Record a season (`record_feed.py`) + check (`check_recording.py`) | ⛔ Pending | Starter-kit tools are available under `data/raw/.../starter_kit/` |
-| 9 | Trade a full testnet season by hand and with the bot | ⛔ Pending | Depends on 5–8 |
+| 5 | Sign in on the testnet, join a team, get a bot key | ⛔ Blocked | Key present but exchange returns `401 Invalid API key`; needs active key (see TESTNET.md) |
+| 6 | Connect bot, subscribe to news, place + cancel an order | 🟡 Built | Client+bot implemented & tested offline; place+cancel is the proposed first live test (awaiting key + approval) |
+| 7 | Stay connected across season rollovers | 🟡 Built | Reconnect + `on_new_season()` implemented & unit-tested; needs live verification |
+| 8 | Record a season + check with `check_recording.py` | 🟡 Built | `ctc-record` writes a check-compatible JSONL; verify once a live key works |
+| 9 | Trade a full testnet season by hand and with the bot | ⛔ Blocked | Depends on 5–8 + explicit approval |
 
-**Summary:** all *research/preparation* items (1–4) are complete and verified; all
-*testnet/live-bot* items (5–9) remain and are the critical pre-event path.
+**Summary:** all *research/preparation* items (1–4) are complete and verified; the live-bot
+stack for items 6–8 is **built and tested offline**, blocked only on a valid bot key (5) and
+approval for state-changing actions (9).
 
 ## Model performance (held-out, 600-season split)
 
@@ -89,27 +108,21 @@ above ~30 bps of half-spread.
 
 ## Remaining testnet / live integration work
 
-Ordered by priority for the event:
+The client, feed→estimator bridge, order manager/rate limiting, reconnect-across-rollover,
+recorder, probe, and replay are **implemented and unit-tested** (see `src/ctc/execution/` and
+`tests/test_exec_*.py`). What remains is **live verification**, which is blocked on a valid
+key and human approval:
 
-1. **Live exchange client** (`ctc/execution/`, currently empty). Wrap the REST API
-   (`POST/DELETE /orders`, `GET /positions`, `/orderbook`, ETF create/redeem) and the
-   `/ws/v1/market-data` WebSocket. Send the bot key in `X-API-Key` and a custom
-   `User-Agent` (the default urllib UA is refused). The `websockets` extra is already
-   declared (`pip install -e ".[live]"`).
-2. **Feed → estimator bridge.** Normalize live feed frames to the same dict shape the
-   `SeasonEstimator` already ingests (they match the research `feed.jsonl` schema), using
-   `seq` for dedup and snapshots for late-join/catch-up.
-3. **Order manager / rate limiting.** Respect 60 actions/min per bot key (180/team),
-   200 resting orders/symbol, and the position limits already enforced in
-   `ctc/risk/limits.py`. Reuse `clamp_order` for live sizing.
-4. **Reconnect across season rollover.** Positions reset to zero and the competition id
-   changes at each new season; the client must re-subscribe and the estimator must
-   `reset()` per season.
-5. **Recording verification.** Run `starter_kit/record_feed.py` then
-   `check_recording.py`; confirm it prints "recording matches the published feed" before
-   trusting the live parser.
-6. **Dry run.** Connect, subscribe to `news`, place one order and cancel it; then trade a
-   full testnet season by hand and with the bot.
+1. **Get an active bot key.** Current key 401s; confirm team registration and re-issue the
+   key into `.env`. Re-run `ctc-bot-probe` until `auth_time.ok == true` ([TESTNET.md](TESTNET.md)).
+2. **First order test (needs approval).** Run the 1-lot PORT place+cancel far from market
+   ([TESTNET.md](TESTNET.md)); confirm ack/cancel/parse round-trip.
+3. **Dry-run a full season live.** `ctc-bot` against the live feed; confirm reconnect across a
+   season rollover and that decisions look sane.
+4. **Record + verify.** `ctc-record`, then starter-kit `check_recording.py`.
+5. **Confirm live field names.** Tighten the tolerant parsers in `models.py` against the real
+   quote/orderbook/ack/snapshot shapes (see "Confirmed vs assumed" in [EXCHANGE.md](EXCHANGE.md)).
+6. **Go live (separate approval).** Only after the above: `CTC_DRY_RUN=false` + `ctc-bot --live`.
 
 ### Strategy improvements worth trying (research side)
 

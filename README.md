@@ -7,19 +7,34 @@ season. This repo finds those values before the market does and trades on them.
 
 - **Research findings:** [docs/RESEARCH.md](docs/RESEARCH.md)
 - **Status, checklist, performance & remaining work:** [docs/HANDOFF.md](docs/HANDOFF.md)
+- **Live bot:** [architecture](docs/ARCHITECTURE.md) · [operations](docs/BOT_OPERATIONS.md) ·
+  [exchange protocol](docs/EXCHANGE.md) · [risk/safety](docs/RISK.md) ·
+  [testnet & first order](docs/TESTNET.md) · [pre-event checklist](docs/CHECKLIST.md)
 - **Case packets:** `docs/*.pdf`
 
 ## Quick start
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"          # add "live" extra for the (future) websocket client
+pip install -e ".[dev,live]"      # dev = tests/lint, live = websocket client
 
 # Extract hurricane-season-research.zip into data/raw/ (not committed), or point to it:
 export CTC_DATA_DIR=/path/to/history    # folder containing manifest.json
 
-pytest -q                         # 75 tests (data-backed ones auto-skip without the data)
+pytest -q                         # 128 tests (data-backed ones auto-skip without the data)
 ```
+
+## Run the bot (safe by default)
+
+```bash
+ctc-bot-probe                     # read-only connectivity check (never trades)
+ctc-bot-replay <feed.jsonl>       # drive the full pipeline offline (dry-run)
+ctc-bot                           # live loop — DRY-RUN by default, submits nothing
+```
+
+The bot defaults to **dry-run**; live order submission requires both `CTC_DRY_RUN=false` and
+`ctc-bot --live`, and must not be enabled without explicit approval. See
+[docs/BOT_OPERATIONS.md](docs/BOT_OPERATIONS.md) and [docs/RISK.md](docs/RISK.md).
 
 ## Reproduce the research
 
@@ -44,9 +59,9 @@ src/ctc/
   strategy/            baseline edge-vs-cost decision logic
   risk/                position/order-limit enforcement
   backtest/            event-driven engine + portfolio accounting
-  research/            CLI entry points (eda / fit / forecast-eval / run_backtest)
-  execution/           live exchange client — STUB, see docs/HANDOFF.md
-tests/                 pytest suite (unit + data-gated integration)
+  research/            CLI entry points (eda / fit / forecast-eval / run_backtest / build_live)
+  execution/           live exchange client, state, risk, trader, recorder, runner (see docs/ARCHITECTURE.md)
+tests/                 pytest suite (unit + data-gated integration + execution + e2e sim)
 ```
 
 ## Design principles
@@ -66,5 +81,5 @@ tests/                 pytest suite (unit + data-gated integration)
 - Backtest: **+1,099 mean PnL/season, 61% win rate**; insurers and ETFs drive profit,
   rebuilders are the current weak spot. See [docs/HANDOFF.md](docs/HANDOFF.md).
 
-> Guardrails: development happens on `feat/research-baseline`; the live execution layer is
-> a stub and places no orders.
+> Guardrails: development happens on `feat/research-baseline`; the bot defaults to dry-run and
+> places no orders without explicit approval (see [docs/RISK.md](docs/RISK.md)).

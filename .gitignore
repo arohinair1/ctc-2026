@@ -8,6 +8,11 @@ research/results/*.png
 research/results/*.parquet
 research/results/figures/
 
+# Feed recordings (can be large; keep out of git)
+research/recordings/
+*.jsonl
+!data/raw/**/*.jsonl
+
 # Python
 __pycache__/
 *.pyc

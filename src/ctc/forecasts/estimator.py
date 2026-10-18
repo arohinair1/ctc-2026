@@ -47,6 +47,51 @@ class Priors:
     prelim_damage_err_var: dict[str, float]
     prelim_loss_err_var: float
 
+    # ---- persistence ---------------------------------------------------
+    def to_dict(self) -> dict[str, Any]:
+        def _ri(d: dict[int, Any]) -> dict[str, Any]:  # int round keys -> str for JSON
+            return {str(k): v for k, v in d.items()}
+
+        return {
+            "damage_by_round": _ri(self.damage_by_round),
+            "loss_by_round": _ri(self.loss_by_round),
+            "outage_by_round": _ri(self.outage_by_round),
+            "damage_var_by_round": _ri(self.damage_var_by_round),
+            "loss_var_by_round": _ri(self.loss_var_by_round),
+            "outage_var_by_round": _ri(self.outage_var_by_round),
+            "prelim_damage_err_var": self.prelim_damage_err_var,
+            "prelim_loss_err_var": self.prelim_loss_err_var,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> Priors:
+        def _ri(x: dict[str, Any]) -> dict[int, Any]:
+            return {int(k): v for k, v in x.items()}
+
+        return cls(
+            damage_by_round=_ri(d["damage_by_round"]),
+            loss_by_round=_ri(d["loss_by_round"]),
+            outage_by_round=_ri(d["outage_by_round"]),
+            damage_var_by_round=_ri(d["damage_var_by_round"]),
+            loss_var_by_round=_ri(d["loss_var_by_round"]),
+            outage_var_by_round=_ri(d["outage_var_by_round"]),
+            prelim_damage_err_var=dict(d["prelim_damage_err_var"]),
+            prelim_loss_err_var=float(d["prelim_loss_err_var"]),
+        )
+
+    def save(self, path) -> None:
+        import json as _json
+        from pathlib import Path as _Path
+
+        _Path(path).write_text(_json.dumps(self.to_dict(), indent=2))
+
+    @classmethod
+    def load(cls, path) -> Priors:
+        import json as _json
+        from pathlib import Path as _Path
+
+        return cls.from_dict(_json.loads(_Path(path).read_text()))
+
 
 def compute_priors(history, season_numbers: list[int]) -> Priors:
     want = set(season_numbers)
@@ -93,6 +138,67 @@ def compute_priors(history, season_numbers: list[int]) -> Priors:
         outage_var_by_round=_var(outage),
         prelim_damage_err_var={s: float(np.var(v)) for s, v in prelim_err.items()},
         prelim_loss_err_var=float(np.var(prelim_loss_err)) if prelim_loss_err else 0.0,
+    )
+
+
+def build_live_estimator(*, use_forecaster: bool = True) -> SeasonEstimator:
+    """Construct a :class:`SeasonEstimator` for live/replay use from committed artifacts.
+
+    Loads the valuation model from ``fitted_params.json`` (always packaged). The damage
+    forecaster and priors are loaded from their committed JSON artifacts if present;
+    otherwise they are fit on the research data if it is available; otherwise the estimator
+    degrades gracefully (no forecaster, empty priors) and relies on damage reports.
+    """
+    from ctc.config import (
+        DAMAGE_FORECASTER_JSON,
+        FITTED_PARAMS_JSON,
+        PRIORS_JSON,
+    )
+
+    valuation = ValuationModel.load(FITTED_PARAMS_JSON)
+
+    forecaster: DamageForecaster | None = None
+    if DAMAGE_FORECASTER_JSON.exists():
+        forecaster = DamageForecaster.load(DAMAGE_FORECASTER_JSON)
+
+    priors: Priors | None = None
+    if PRIORS_JSON.exists():
+        priors = Priors.load(PRIORS_JSON)
+
+    if forecaster is None or priors is None:
+        # fall back to fitting from the raw research data if it is available
+        try:
+            from ctc.data.history import load
+            from ctc.forecasts.damage import build_storm_records
+
+            data = load()
+            nums = [s.number for s in data.seasons]
+            if forecaster is None:
+                forecaster = DamageForecaster().fit(build_storm_records(data, nums))
+            if priors is None:
+                priors = compute_priors(data, nums)
+        except FileNotFoundError:
+            pass
+
+    if priors is None:
+        priors = _empty_priors()
+
+    return SeasonEstimator(valuation, forecaster, priors, use_forecaster=use_forecaster)
+
+
+def _empty_priors() -> Priors:
+    """Zeroed priors for degraded operation when no artifacts/data are available."""
+    rounds = (1, 2, 3)
+    z = {r: dict.fromkeys(ISLAND_BUSINESSES, 0.0) for r in rounds}
+    return Priors(
+        damage_by_round={r: dict(z[r]) for r in rounds},
+        loss_by_round=dict.fromkeys(rounds, 0.0),
+        outage_by_round={r: dict(z[r]) for r in rounds},
+        damage_var_by_round={r: dict(z[r]) for r in rounds},
+        loss_var_by_round=dict.fromkeys(rounds, 0.0),
+        outage_var_by_round={r: dict(z[r]) for r in rounds},
+        prelim_damage_err_var=dict.fromkeys(ISLAND_BUSINESSES, 0.0),
+        prelim_loss_err_var=0.0,
     )
 
 

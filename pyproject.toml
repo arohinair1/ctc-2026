@@ -31,12 +31,22 @@ ctc-eda = "ctc.research.eda:main"
 ctc-fit = "ctc.research.fit:main"
 ctc-forecast-eval = "ctc.research.forecast_eval:main"
 ctc-backtest = "ctc.research.run_backtest:main"
+ctc-build-live = "ctc.research.build_live:main"
+ctc-bot = "ctc.execution.runner:main"
+ctc-bot-probe = "ctc.execution.runner:probe_main"
+ctc-bot-replay = "ctc.execution.runner:replay_main"
+ctc-record = "ctc.execution.recorder:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-ctc = ["data/case.json", "models/fitted_params.json"]
+ctc = [
+    "data/case.json",
+    "models/fitted_params.json",
+    "models/damage_forecaster.json",
+    "models/priors.json",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

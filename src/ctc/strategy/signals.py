@@ -98,3 +98,52 @@ def decide(
             exec_px = bid
         decisions.append(Decision(sym, target, order, fv - mid, exec_px))
     return decisions
+
+
+def decide_live(
+    fair: dict[str, float],
+    books: dict[str, tuple[float | None, float | None]],
+    positions: dict[str, int],
+    cfg: StrategyConfig,
+    uncertainty: dict[str, float] | None = None,
+) -> list[Decision]:
+    """Decision logic for live trading using *real* executable bid/ask.
+
+    Same thresholds as :func:`decide`, but the executable cost is the actual quoted spread
+    rather than the synthetic ``half_spread`` (so the half-spread term is dropped from the
+    required edge; the cushion and uncertainty gate still apply). ``books`` maps symbol to
+    ``(bid, ask)``.
+    """
+    uncertainty = uncertainty or {}
+    decisions: list[Decision] = []
+    for sym in cfg.symbols:
+        fv = fair.get(sym)
+        bid, ask = books.get(sym, (None, None))
+        if fv is None or bid is None or ask is None or bid <= 0 or ask <= 0:
+            continue
+        mid = 0.5 * (bid + ask)
+        required = cfg.cushion_abs + cfg.cushion_frac * mid + cfg.uncertainty_k * uncertainty.get(sym, 0.0)
+        pos = positions.get(sym, 0)
+        lim = position_limit(sym)
+        scale = cfg.edge_scale_frac * mid
+        edge_long = fv - ask  # buy at the ask
+        edge_short = bid - fv  # sell at the bid
+        if edge_long > required:
+            frac = min(1.0, (edge_long - required) / max(scale, 1e-9))
+            target = int(round(frac * lim))
+            exec_px = ask
+        elif edge_short > required:
+            frac = min(1.0, (edge_short - required) / max(scale, 1e-9))
+            target = -int(round(frac * lim))
+            exec_px = bid
+        else:
+            target = 0
+            exec_px = mid
+        max_trade = max(1, int(cfg.max_trade_per_step_frac * lim))
+        order = clamp_order(sym, pos, target, max_trade=max_trade)
+        if order > 0:
+            exec_px = ask
+        elif order < 0:
+            exec_px = bid
+        decisions.append(Decision(sym, target, order, fv - mid, exec_px))
+    return decisions

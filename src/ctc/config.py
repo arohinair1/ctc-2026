@@ -26,6 +26,8 @@ PACKAGE_DIR = Path(__file__).resolve().parent
 REPO_ROOT = PACKAGE_DIR.parent.parent
 CASE_JSON = PACKAGE_DIR / "data" / "case.json"
 FITTED_PARAMS_JSON = PACKAGE_DIR / "models" / "fitted_params.json"
+DAMAGE_FORECASTER_JSON = PACKAGE_DIR / "models" / "damage_forecaster.json"
+PRIORS_JSON = PACKAGE_DIR / "models" / "priors.json"
 RESULTS_DIR = REPO_ROOT / "research" / "results"
 
 # Candidate locations for the extracted research data (folder with manifest.json).

@@ -1,0 +1,253 @@
+{
+  "n_seasons": 600,
+  "reference_example": {
+    "accuracy": 0.6963888888888888,
+    "right": 10028,
+    "total": 14400
+  },
+  "storms": {
+    "n_storms": 1800,
+    "pattern_freq": {
+      "direct": 0.25,
+      "chain": 0.22722222222222221,
+      "recurve": 0.20722222222222222,
+      "stall": 0.1511111111111111,
+      "eyewall": 0.145,
+      "erratic": 0.019444444444444445
+    },
+    "erratic_turn_frac": 0.06333333333333334,
+    "erratic_turn_age_mean": 247.1315789473684,
+    "pattern_freq_by_round": {
+      "1": {
+        "recurve": 136,
+        "chain": 142,
+        "eyewall": 81,
+        "stall": 87,
+        "direct": 145,
+        "erratic": 9
+      },
+      "2": {
+        "stall": 100,
+        "chain": 120,
+        "recurve": 117,
+        "eyewall": 96,
+        "direct": 154,
+        "erratic": 13
+      },
+      "3": {
+        "direct": 151,
+        "stall": 85,
+        "chain": 147,
+        "recurve": 120,
+        "eyewall": 84,
+        "erratic": 13
+      }
+    }
+  },
+  "damage": {
+    "per_company": {
+      "PORT": {
+        "mean": 15.83095,
+        "std": 22.940285964936347,
+        "p50": 0.99,
+        "p90": 55.201,
+        "max": 97.5,
+        "frac_zero": 0.48277777777777775
+      },
+      "ISLE": {
+        "mean": 8.621005555555556,
+        "std": 11.495823417416153,
+        "p50": 3.54,
+        "p90": 30.19600000000001,
+        "max": 50.49,
+        "frac_zero": 0.27
+      },
+      "AQUA": {
+        "mean": 13.045372222222223,
+        "std": 14.929103998391328,
+        "p50": 5.6,
+        "p90": 40.282000000000004,
+        "max": 45.0,
+        "frac_zero": 0.185
+      },
+      "GRID": {
+        "mean": 13.51361111111111,
+        "std": 9.776411967581796,
+        "p50": 12.225000000000001,
+        "p90": 26.514000000000006,
+        "max": 46.62,
+        "frac_zero": 0.013888888888888888
+      },
+      "FERRY": {
+        "mean": 12.512394444444443,
+        "std": 10.336690357382947,
+        "p50": 9.645,
+        "p90": 28.72900000000001,
+        "max": 44.59,
+        "frac_zero": 0.015
+      }
+    },
+    "per_pattern_mean_damage": {
+      "recurve": {
+        "PORT": 0.0,
+        "ISLE": 7.6821715817694365,
+        "AQUA": 17.31750670241287,
+        "GRID": 4.413538873994638,
+        "FERRY": 5.885335120643431
+      },
+      "stall": {
+        "PORT": 0.15415441176470587,
+        "ISLE": 26.919889705882355,
+        "AQUA": 31.409191176470586,
+        "GRID": 15.910477941176472,
+        "FERRY": 22.879889705882352
+      },
+      "direct": {
+        "PORT": 39.092977777777776,
+        "ISLE": 0.520488888888889,
+        "AQUA": 1.8519777777777777,
+        "GRID": 18.25622222222222,
+        "FERRY": 12.233822222222223
+      },
+      "chain": {
+        "PORT": 14.210635696821514,
+        "ISLE": 2.572909535452323,
+        "AQUA": 4.217163814180929,
+        "GRID": 10.791075794621028,
+        "FERRY": 9.592542787286064
+      },
+      "eyewall": {
+        "PORT": 18.97478927203065,
+        "ISLE": 14.801302681992336,
+        "AQUA": 21.87448275862069,
+        "GRID": 21.395708812260537,
+        "FERRY": 17.326666666666668
+      },
+      "erratic": {
+        "PORT": 2.782,
+        "ISLE": 5.156285714285714,
+        "AQUA": 6.042571428571428,
+        "GRID": 3.9277142857142855,
+        "FERRY": 4.369142857142857
+      }
+    },
+    "storm_loss": {
+      "mean": 336.4287777777778,
+      "std": 256.35159784226806,
+      "p50": 279.35,
+      "p90": 706.3100000000002,
+      "max": 1201.2,
+      "frac_zero": 0.005
+    },
+    "season_loss": {
+      "mean": 1009.2873333333333,
+      "std": 326.8910207896339,
+      "p50": 1034.7,
+      "p90": 1421.73,
+      "max": 1766.2,
+      "frac_zero": 0.0
+    }
+  },
+  "settlement_vs_start": {
+    "PORT": {
+      "start": 72.48,
+      "settle_mean": 72.24593333333333,
+      "settle_std": 18.936075740823973,
+      "settle_min": 37.58,
+      "settle_max": 100.0,
+      "mean_minus_start": -0.23406666666667775
+    },
+    "ISLE": {
+      "start": 50.26,
+      "settle_mean": 50.17215,
+      "settle_std": 6.271725563524496,
+      "settle_min": 27.65,
+      "settle_max": 60.0,
+      "mean_minus_start": -0.08784999999999599
+    },
+    "AQUA": {
+      "start": 27.33,
+      "settle_mean": 27.172733333333333,
+      "settle_std": 3.890089741324171,
+      "settle_min": 17.64,
+      "settle_max": 35.0,
+      "mean_minus_start": -0.1572666666666649
+    },
+    "GRID": {
+      "start": 36.41,
+      "settle_mean": 36.56451666666666,
+      "settle_std": 4.161012508960075,
+      "settle_min": 25.81,
+      "settle_max": 48.57,
+      "mean_minus_start": 0.15451666666666597
+    },
+    "FERRY": {
+      "start": 17.91,
+      "settle_mean": 18.1798,
+      "settle_std": 3.214560202163483,
+      "settle_min": 9.11,
+      "settle_max": 24.84,
+      "mean_minus_start": 0.26980000000000004
+    },
+    "RECON": {
+      "start": 52.38,
+      "settle_mean": 52.00185,
+      "settle_std": 4.3569695597016365,
+      "settle_min": 41.3,
+      "settle_max": 58.15,
+      "mean_minus_start": -0.3781500000000051
+    },
+    "MAT": {
+      "start": 35.81,
+      "settle_mean": 35.73045,
+      "settle_std": 1.7686714309993625,
+      "settle_min": 29.42,
+      "settle_max": 38.79,
+      "mean_minus_start": -0.07955000000000467
+    },
+    "GEN": {
+      "start": 40.3,
+      "settle_mean": 40.02456666666667,
+      "settle_std": 2.3441095990209635,
+      "settle_min": 32.0,
+      "settle_max": 45.36,
+      "mean_minus_start": -0.275433333333325
+    },
+    "HAVEN": {
+      "start": 39.55,
+      "settle_mean": 39.94665,
+      "settle_std": 16.682392782336912,
+      "settle_min": 21.0,
+      "settle_max": 75.0,
+      "mean_minus_start": 0.39665000000000106
+    },
+    "REIN": {
+      "start": 89.36,
+      "settle_mean": 88.98571666666666,
+      "settle_std": 2.6862729111271544,
+      "settle_min": 73.68,
+      "settle_max": 90.0,
+      "mean_minus_start": -0.37428333333333796
+    },
+    "ARCH": {
+      "start": 289.2,
+      "settle_mean": 289.6343166666667,
+      "settle_std": 38.314981376302256,
+      "settle_min": 208.05,
+      "settle_max": 393.84,
+      "mean_minus_start": 0.4343166666666889
+    },
+    "REBLD": {
+      "start": 216.68,
+      "settle_mean": 215.48916666666668,
+      "settle_std": 13.59638679841899,
+      "settle_min": 175.32,
+      "settle_max": 238.28,
+      "mean_minus_start": -1.1908333333333303
+    }
+  },
+  "figures": [
+    "/Users/arohinair/ctc-2026/research/results/figures/pattern_freq.png",
+    "/Users/arohinair/ctc-2026/research/results/figures/season_loss_hist.png"
+  ]
+}

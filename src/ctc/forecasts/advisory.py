@@ -67,8 +67,7 @@ def accuracy(
                     break
     overall = {s: right[s] / total[s] for s in total}
     by_age = {
-        s: {b: bin_right[s][b] / bin_total[s][b] for b in bin_total[s] if bin_total[s][b]}
-        for s in bin_total
+        s: {b: bin_right[s][b] / bin_total[s][b] for b in bin_total[s] if bin_total[s][b]} for s in bin_total
     }
     return AccuracyResult(overall, by_age, dict(total))
 
@@ -89,9 +88,7 @@ def earliness(history: History) -> dict[str, dict[str, float]]:
             final = truth_at_age(storm, 10_000)
             storms_count += 1
             for src in ("official", "wire"):
-                advs = sorted(
-                    season.messages(r, type="advisory", source=src), key=lambda m: m.get("age", 0)
-                )
+                advs = sorted(season.messages(r, type="advisory", source=src), key=lambda m: m.get("age", 0))
                 first_durable = None
                 for i, a in enumerate(advs):
                     if a["outlook"] == final and all(b["outlook"] == final for b in advs[i:]):
@@ -134,9 +131,7 @@ class Calibration:
     counts: list[int] = field(default_factory=list)
 
 
-def hurricane_condition_calibration(
-    history: History, n_bins: int = 10
-) -> Calibration:
+def hurricane_condition_calibration(history: History, n_bins: int = 10) -> Calibration:
     """Calibrate official per-island hurricane-condition probabilities.
 
     For each official advisory and each island, pair the forecast probability with the

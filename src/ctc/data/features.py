@@ -24,10 +24,7 @@ def season_outages(season: Season) -> dict[str, float]:
     """Site-weighted outage metric for every island business over the whole season."""
     obs_by_round = group_storm_obs(season.feed)
     sites = company_sites()
-    return {
-        sym: company_outage_metric(obs_by_round, sites[sym])
-        for sym in ISLAND_BUSINESSES
-    }
+    return {sym: company_outage_metric(obs_by_round, sites[sym]) for sym in ISLAND_BUSINESSES}
 
 
 def season_cumulative_damage(season: Season) -> dict[str, float]:

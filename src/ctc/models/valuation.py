@@ -169,9 +169,7 @@ class ValuationModel:
         return self
 
     def _fit_resid_std(self, table: pd.DataFrame) -> None:
-        acc: dict[str, list[float]] = {
-            s: [] for s in ISLAND_BUSINESSES + INSURERS + REBUILDERS + ETFS
-        }
+        acc: dict[str, list[float]] = {s: [] for s in ISLAND_BUSINESSES + INSURERS + REBUILDERS + ETFS}
         for _, row in table.iterrows():
             feats = {k: row[k] for k in row.index if k.startswith(("cumdmg_", "outage_"))}
             feats["season_loss"] = row["season_loss"]
@@ -203,10 +201,7 @@ class ValuationModel:
     @staticmethod
     def etf_value(stock_values: dict[str, float]) -> dict[str, float]:
         """Basket value of each ETF given a dict of stock values."""
-        return {
-            etf: sum(stock_values[s] * q for s, q in basket.items())
-            for etf, basket in baskets().items()
-        }
+        return {etf: sum(stock_values[s] * q for s, q in basket.items()) for etf, basket in baskets().items()}
 
     # ---- persistence ---------------------------------------------------
     def to_dict(self) -> dict[str, Any]:

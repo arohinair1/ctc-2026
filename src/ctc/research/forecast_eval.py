@@ -70,7 +70,9 @@ def main() -> int:
 
     result = {
         "accuracy_overall": acc.overall,
-        "accuracy_by_age": {src: {f"{lo}-{hi}": v for (lo, hi), v in d.items()} for src, d in acc.by_age.items()},
+        "accuracy_by_age": {
+            src: {f"{lo}-{hi}": v for (lo, hi), v in d.items()} for src, d in acc.by_age.items()
+        },
         "earliness": early,
         "calibration": {
             "predicted": cal.predicted,
@@ -86,14 +88,18 @@ def main() -> int:
     (RESULTS_DIR / "forecast_eval.json").write_text(json.dumps(result, indent=2))
 
     print("Advisory accuracy (overall):", {k: round(v, 3) for k, v in acc.overall.items()})
-    print("Accuracy by age (official):",
-          {k: round(v, 2) for k, v in acc.by_age.get("official", {}).items()})
-    print("Earliness (official):", {k: round(v, 1) if isinstance(v, float) else v
-                                     for k, v in early["official"].items()})
+    print("Accuracy by age (official):", {k: round(v, 2) for k, v in acc.by_age.get("official", {}).items()})
+    print(
+        "Earliness (official):",
+        {k: round(v, 1) if isinstance(v, float) else v for k, v in early["official"].items()},
+    )
     print("Wire value:", {k: round(v, 3) if isinstance(v, float) else v for k, v in wire.items()})
-    print("Damage forecaster held-out MAE:",
-          {s: round(fc_eval[s]["mae"], 2) for s in ISLAND_BUSINESSES},
-          "loss MAE", round(fc_eval["loss"]["mae"], 2))
+    print(
+        "Damage forecaster held-out MAE:",
+        {s: round(fc_eval[s]["mae"], 2) for s in ISLAND_BUSINESSES},
+        "loss MAE",
+        round(fc_eval["loss"]["mae"], 2),
+    )
     print(f"Wrote {RESULTS_DIR / 'forecast_eval.json'}")
     return 0
 

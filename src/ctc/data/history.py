@@ -64,8 +64,7 @@ class Season:
         return [
             m
             for m in self.feed
-            if (round is None or m.get("round") == round)
-            and all(m.get(k) == v for k, v in match.items())
+            if (round is None or m.get("round") == round) and all(m.get(k) == v for k, v in match.items())
         ]
 
     def track(self, round: int) -> list[tuple[int, float, float, float]]:
@@ -106,7 +105,6 @@ def load(root: str | Path | None = None) -> History:
     root = Path(root) if root is not None else history_dir()
     manifest = json.loads((root / "manifest.json").read_text())
     seasons = [
-        Season(s["season"], root / s["dir"], s["storms"], s["season_loss_musd"])
-        for s in manifest["seasons"]
+        Season(s["season"], root / s["dir"], s["storms"], s["season_loss_musd"]) for s in manifest["seasons"]
     ]
     return History(root, seasons)

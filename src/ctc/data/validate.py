@@ -99,16 +99,12 @@ def validate_season(season: Season) -> SeasonIssues:
             a = storm["damage_pct"][sym]
             b = fin["damage_pct"].get(sym)
             if b is None or abs(a - b) > 0.05:
-                issues.warnings.append(
-                    f"round {storm['round']} {sym}: manifest {a} vs feed {b}"
-                )
+                issues.warnings.append(f"round {storm['round']} {sym}: manifest {a} vs feed {b}")
 
     # per-storm losses sum to season total
     tot = sum(s["industry_loss_musd"] for s in season.storms)
     if abs(tot - season.season_loss_musd) > 0.5:
-        issues.warnings.append(
-            f"sum of storm losses {tot:.1f} != season_loss {season.season_loss_musd:.1f}"
-        )
+        issues.warnings.append(f"sum of storm losses {tot:.1f} != season_loss {season.season_loss_musd:.1f}")
 
     return issues
 
@@ -137,8 +133,7 @@ def main() -> int:
                 print(f"  warn   {w}")
 
     print(
-        f"Validated {len(seasons)} seasons: {n_err} errors across {bad_seasons} seasons, "
-        f"{n_warn} warnings."
+        f"Validated {len(seasons)} seasons: {n_err} errors across {bad_seasons} seasons, {n_warn} warnings."
     )
     return 1 if n_err else 0
 

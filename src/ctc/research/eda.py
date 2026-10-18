@@ -167,9 +167,11 @@ def main() -> int:
     print(f"Reference example: official advisories named the true pattern {ref['accuracy']:.0%}")
     print(f"Storm patterns: {stats['storms']['pattern_freq']}")
     print(f"Erratic turn fraction: {stats['storms']['erratic_turn_frac']:.1%}")
-    print(f"Season loss: mean ${stats['damage']['season_loss']['mean']:.0f}M "
-          f"p90 ${stats['damage']['season_loss']['p90']:.0f}M "
-          f"max ${stats['damage']['season_loss']['max']:.0f}M")
+    print(
+        f"Season loss: mean ${stats['damage']['season_loss']['mean']:.0f}M "
+        f"p90 ${stats['damage']['season_loss']['p90']:.0f}M "
+        f"max ${stats['damage']['season_loss']['max']:.0f}M"
+    )
     print(f"Wrote {RESULTS_DIR / 'eda_summary.json'}")
     return 0
 

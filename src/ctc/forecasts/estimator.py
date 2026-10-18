@@ -213,7 +213,7 @@ class SeasonEstimator:
                     out[sym] += self._obs_outage[r][sym]
                     dvar[sym] += self.forecaster.resid_std.get(sym, 0.0) ** 2
                 loss += self.forecaster.predict_loss(dmg)
-                lvar += self.forecaster.loss_resid_std ** 2
+                lvar += self.forecaster.loss_resid_std**2
             else:
                 for sym in ISLAND_BUSINESSES:
                     cum[sym] += self.priors.damage_by_round.get(r, {}).get(sym, 0.0)
@@ -245,14 +245,12 @@ class SeasonEstimator:
         std = self._propagate_uncertainty(features, var)
         return fair, std
 
-    def _propagate_uncertainty(
-        self, features: dict[str, float], var: dict[str, float]
-    ) -> dict[str, float]:
+    def _propagate_uncertainty(self, features: dict[str, float], var: dict[str, float]) -> dict[str, float]:
         vm = self.valuation
         std: dict[str, float] = {}
         # island businesses: linear in damage and outage
         for sym, m in vm.islands.items():
-            v = (m.b_damage ** 2) * var[f"cumdmg_{sym}"] + (m.c_outage ** 2) * var[f"outage_{sym}"]
+            v = (m.b_damage**2) * var[f"cumdmg_{sym}"] + (m.c_outage**2) * var[f"outage_{sym}"]
             std[sym] = math.sqrt(max(v, 0.0))
         # insurers: slope * loss, only where the loss estimate overlaps the layer
         loss_est = features["season_loss"]
@@ -275,18 +273,18 @@ class SeasonEstimator:
                 driver = max(dfeat.get(d, 0.0), 1e-6)
                 dvar = self._driver_variance(d, var)
                 deriv = c / (2.0 * math.sqrt(driver))
-                v += (deriv ** 2) * dvar
+                v += (deriv**2) * dvar
             std[sym] = math.sqrt(max(v, 0.0))
         # add each symbol's irreducible valuation residual as an uncertainty floor
         for sym in list(std):
             rs = vm.resid_std.get(sym, 0.0)
-            std[sym] = math.sqrt(std[sym] ** 2 + rs ** 2)
+            std[sym] = math.sqrt(std[sym] ** 2 + rs**2)
         # ETFs: conservative linear sum of constituent uncertainties, plus ETF residual floor
         from ctc.config import baskets
 
         for etf, basket in baskets().items():
             base = sum(abs(q) * std.get(s, 0.0) for s, q in basket.items())
-            std[etf] = math.sqrt(base ** 2 + vm.resid_std.get(etf, 0.0) ** 2)
+            std[etf] = math.sqrt(base**2 + vm.resid_std.get(etf, 0.0) ** 2)
         return std
 
     @staticmethod

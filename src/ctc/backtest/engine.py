@@ -74,9 +74,7 @@ class Backtester:
             pf.update_drawdown(mids)
 
         pnl = pf.settle(settlement)
-        pnl_by_symbol = {
-            s: pf.positions.get(s, 0) * settlement[s] - cost_basis[s] for s in ALL_SYMBOLS
-        }
+        pnl_by_symbol = {s: pf.positions.get(s, 0) * settlement[s] - cost_basis[s] for s in ALL_SYMBOLS}
         return SeasonResult(
             season=season.number,
             pnl=pnl,

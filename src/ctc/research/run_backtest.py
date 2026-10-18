@@ -146,15 +146,16 @@ def main() -> int:
     for g, v in attrib["by_group"].items():
         print(f"  {g:16s} {v:,.1f}")
     print("\n=== Oracle upper bound (fair=settlement) mean PnL ===")
-    print(f"  {oracle['mean_pnl']:,.2f}  (strategy captures "
-          f"{100*summary['mean_pnl']/oracle['mean_pnl']:.0f}% of oracle)")
+    print(
+        f"  {oracle['mean_pnl']:,.2f}  (strategy captures "
+        f"{100 * summary['mean_pnl'] / oracle['mean_pnl']:.0f}% of oracle)"
+    )
     print("\n=== Transaction-cost sensitivity (mean PnL) ===")
     for k, v in sweep.items():
         print(f"  {k:22s} {v:,.2f}")
     print("\n=== ETF static mispricing (house ETF - basket) ===")
     for etf, r in etf_rep.items():
-        print(f"  {etf}: mean={r['mean_premium']:+.2f} std={r['std_premium']:.2f} "
-              f"|mean|={r['abs_mean']:.2f}")
+        print(f"  {etf}: mean={r['mean_premium']:+.2f} std={r['std_premium']:.2f} |mean|={r['abs_mean']:.2f}")
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     (RESULTS_DIR / "backtest_results.json").write_text(

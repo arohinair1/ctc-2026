@@ -146,6 +146,7 @@ class ValuationModel:
     islands: dict[str, IslandBusinessModel] = field(default_factory=dict)
     insurers: dict[str, InsurerModel] = field(default_factory=dict)
     rebuilders: dict[str, RebuilderModel] = field(default_factory=dict)
+    resid_std: dict[str, float] = field(default_factory=dict)  # in-sample residual std per symbol
 
     # ---- fitting -------------------------------------------------------
     def fit(self, table: pd.DataFrame) -> ValuationModel:
@@ -164,7 +165,20 @@ class ValuationModel:
             self.rebuilders[sym] = RebuilderModel(drivers=list(REBUILDER_DRIVERS[sym])).fit(
                 table, table[f"settle_{sym}"].to_numpy(float)
             )
+        self._fit_resid_std(table)
         return self
+
+    def _fit_resid_std(self, table: pd.DataFrame) -> None:
+        acc: dict[str, list[float]] = {
+            s: [] for s in ISLAND_BUSINESSES + INSURERS + REBUILDERS + ETFS
+        }
+        for _, row in table.iterrows():
+            feats = {k: row[k] for k in row.index if k.startswith(("cumdmg_", "outage_"))}
+            feats["season_loss"] = row["season_loss"]
+            pred = self.predict_all(feats)
+            for sym in acc:
+                acc[sym].append(pred[sym] - row[f"settle_{sym}"])
+        self.resid_std = {s: float(np.std(v)) for s, v in acc.items()}
 
     # ---- prediction ----------------------------------------------------
     def predict_stock(self, sym: str, features: dict[str, float]) -> float:
@@ -200,6 +214,7 @@ class ValuationModel:
             "islands": {k: vars(v) for k, v in self.islands.items()},
             "insurers": {k: vars(v) for k, v in self.insurers.items()},
             "rebuilders": {k: vars(v) for k, v in self.rebuilders.items()},
+            "resid_std": self.resid_std,
         }
 
     def save(self, path: str | Path) -> None:
@@ -211,6 +226,7 @@ class ValuationModel:
         m.islands = {k: IslandBusinessModel(**v) for k, v in d["islands"].items()}
         m.insurers = {k: InsurerModel(**v) for k, v in d["insurers"].items()}
         m.rebuilders = {k: RebuilderModel(**v) for k, v in d["rebuilders"].items()}
+        m.resid_std = dict(d.get("resid_std", {}))
         return m
 
     @classmethod

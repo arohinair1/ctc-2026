@@ -36,7 +36,7 @@ off packaged model artifacts (`src/ctc/models/*.json`); data-backed tests auto-s
 ```bash
 ruff format src tests
 ruff check src tests          # must pass (line length 110)
-pytest -q                     # 128 tests must pass
+pytest -q                     # 130 tests must pass
 ```
 
 CI (`.github/workflows/ci.yml`) runs lint + format + pytest on 3.10–3.13.
@@ -64,6 +64,8 @@ CI (`.github/workflows/ci.yml`) runs lint + format + pytest on 3.10–3.13.
 
 ## Current status (keep this honest)
 
-Research done; live stack built and tested offline (128 tests). Blocked on a valid bot key
-(current key → `401 Invalid API key`; public endpoint works). Next: get an active key, run
-the probe to green, then the approved place+cancel test. See [docs/CHECKLIST.md](docs/CHECKLIST.md).
+Research done; live stack built and tested offline (130 tests). Record→replay→dry-run
+round-trip verified end-to-end offline. Blocked on a valid bot key (current key →
+`401 Invalid API key` on REST, `403` on WS; public endpoint works 200). Next: get an active
+key, run the probe to green, then the approved place+cancel test. See
+[docs/CHECKLIST.md](docs/CHECKLIST.md).

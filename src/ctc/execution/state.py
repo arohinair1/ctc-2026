@@ -52,7 +52,7 @@ class LiveState:
     phase: str | None = None
 
     _seen_seq: set[int] = field(default_factory=set)
-    _resync_pending: bool = False
+    _resync_pending: bool = True
     n_frames: int = 0
     n_feed_msgs: int = 0
     n_duplicates: int = 0

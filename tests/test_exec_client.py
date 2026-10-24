@@ -142,3 +142,12 @@ def test_stream_emits_reconnect_sentinel_on_failure():
     client = ExchangeClient(_cfg(), ws_connect=fake)
     frames = asyncio.run(_collect(client.stream(["PORT"], ["news"], max_reconnects=0)))
     assert [f.type for f in frames] == ["_reconnect"]
+
+
+def test_limiter_resumes_after_full_window_without_recursive_lock_deadlock():
+    async def scenario():
+        limiter = RateLimiter(1, window_s=0.01)
+        await limiter.acquire()
+        await asyncio.wait_for(limiter.acquire(), timeout=0.2)
+
+    asyncio.run(scenario())

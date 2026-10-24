@@ -34,7 +34,7 @@ from ctc.execution.automation import (
 )
 from ctc.execution.client import ExchangeClient
 from ctc.execution.log import get_logger, setup_logging
-from ctc.execution.models import OrderRequest, OrderType, Side
+from ctc.execution.models import OrderRequest, OrderType, Quote, Side
 from ctc.execution.recorder import iter_recorded_frames
 from ctc.execution.risk import RiskManager, gross_exposure
 from ctc.execution.settings import LiveConfig
@@ -109,7 +109,10 @@ async def _run_port_execution_test(
 
     try:
         current_orders = await trader.client.get_open_orders()
-        if any(order.symbol == "PORT" for order in current_orders):
+        if any(
+            order.symbol == "PORT" and order.order_id in trader.order_registry.orders
+            for order in current_orders
+        ):
             return None
         if not trader.order_registry.reconcile(current_orders):
             return None
@@ -124,12 +127,15 @@ async def _run_port_execution_test(
         log.warning("PORT execution test waiting for position state to match exchange reconciliation")
         return None
     best_bid = quote.bid
-    test_price = round(best_bid * 0.5, 6)
-    if test_price <= 0 or test_price >= best_bid:
+    # Prefer the exposure-reducing side for inherited inventory. A passive sell
+    # avoids a circular gross-cap block when a manual long already exceeds rollout limits.
+    test_side = Side.SELL if position_before > 0 else Side.BUY
+    test_price = round(quote.ask * 2 if test_side is Side.SELL else best_bid * 0.5, 6)
+    if test_price <= 0:
         return None
     request = OrderRequest(
         symbol="PORT",
-        side=Side.BUY,
+        side=test_side,
         quantity=1,
         order_type=OrderType.LIMIT,
         price=test_price,
@@ -174,7 +180,7 @@ async def _run_port_execution_test(
                 if matching is not None:
                     appeared = (
                         matching.symbol == "PORT"
-                        and matching.side is Side.BUY
+                        and matching.side is test_side
                         and matching.quantity == 1
                         and matching.price is not None
                         and math.isclose(matching.price, test_price, abs_tol=1e-6)
@@ -233,10 +239,11 @@ async def _run_port_execution_test(
     evidence = ExecutionTestEvidence(
         order_id=order_id,
         symbol="PORT",
-        side="buy",
+        side=test_side.value,
         quantity=1,
         limit_price=test_price,
         best_bid_before=best_bid,
+        best_ask_before=quote.ask,
         fill_quantity=fill_quantity,
         appeared_in_open_orders=appeared,
         cancellation_acknowledged=cancel_acknowledged,
@@ -250,6 +257,33 @@ async def _run_port_execution_test(
     if failure:
         trader.execution_fault = True
     return evidence
+
+
+async def _refresh_stale_quotes(client: ExchangeClient, state: LiveState, max_age_s: float) -> None:
+    """Sparse quote channels send changes, not heartbeats; confirm quiet books by REST."""
+    semaphore = asyncio.Semaphore(4)
+    now = state.clock()
+    stale = [
+        symbol
+        for symbol in ALL_SYMBOLS
+        if symbol not in state.quotes or now - state.quotes[symbol].received_at >= max_age_s / 2
+    ]
+
+    async def refresh(symbol: str) -> None:
+        async with semaphore:
+            try:
+                book = await client.get_orderbook(symbol)
+                state.books[symbol] = book
+                state.quotes[symbol] = Quote(
+                    symbol,
+                    book.best_bid,
+                    book.best_ask,
+                    received_at=state.clock(),
+                )
+            except Exception as exc:  # noqa: BLE001 - failed reads leave the old quote stale
+                log.warning("book refresh failed for %s (%s)", symbol, type(exc).__name__)
+
+    await asyncio.gather(*(refresh(symbol) for symbol in stale))
 
 
 # ---------------------------------------------------------------------------
@@ -331,10 +365,13 @@ async def run_bot(
         if accounting_provider is not None:
             try:
                 snapshot = await accounting_provider(client)
-                fills_complete = trader.order_registry.reconcile_executions(
-                    snapshot.executions,
-                    history_complete=snapshot.execution_history_complete,
-                )
+                if snapshot.account_pnl_complete:
+                    fills_complete = trader.order_registry.reconcile_order_states(snapshot.order_states)
+                else:
+                    fills_complete = trader.order_registry.reconcile_executions(
+                        snapshot.executions,
+                        history_complete=snapshot.execution_history_complete,
+                    )
             except Exception as exc:  # noqa: BLE001 - accounting failure fails closed
                 log.warning("verified account snapshot unavailable (%s)", type(exc).__name__)
                 snapshot = None
@@ -358,7 +395,7 @@ async def run_bot(
         verified = (
             snapshot.source_verified
             and fresh_snapshot
-            and snapshot.execution_history_complete
+            and (snapshot.execution_history_complete or snapshot.account_pnl_complete)
             and fills_complete
             and trader.last_reconcile_ok
             and trader.order_registry.ownership_verified
@@ -369,6 +406,7 @@ async def run_bot(
             realized_pnl=snapshot.realized_pnl,
             unrealized_pnl=snapshot.unrealized_pnl,
             source_verified=verified,
+            account_pnl_complete=snapshot.account_pnl_complete,
         )
         if not verified:
             log.warning("account PnL/fill reconciliation incomplete; automatic live gate remains closed")
@@ -393,6 +431,9 @@ async def run_bot(
             log.error("could not open recording path (%s); continuing without recording", type(exc).__name__)
     try:
         while True:
+            if Path(cfg.process_lock_path).with_suffix(".stop").exists():
+                log.warning("operator stop file detected; shutting down cleanly")
+                break
             now = time.monotonic()
             wait_s = max(0.0, status_poll_s - (now - last_status_poll))
             done, _ = await asyncio.wait({next_frame}, timeout=wait_s)
@@ -424,6 +465,7 @@ async def run_bot(
                 await poll_status()
                 last_status_poll = time.monotonic()
             if now - last_step >= step_interval_s:
+                await _refresh_stale_quotes(client, trader.state, cfg.stale_after_s)
                 loss_stopped = await trader.enforce_session_loss(pnl_tracker)
                 if cfg.automatic_transition_enabled and trader.automatic_live_authorized:
                     now_mono = time.monotonic()
@@ -447,6 +489,10 @@ async def run_bot(
                         or trader.execution_fault
                     ):
                         trader.automatic_live_authorized = False
+                # Unsent observation proposals must not consume churn-control prices.
+                # Otherwise a persistent profitable quote counts as "no edge" on later samples.
+                if not trader.automatic_live_authorized:
+                    trader._last_price.clear()
                 plog = await trader.step()
                 quote_now = time.time()
                 fresh_symbols = frozenset(
@@ -513,6 +559,19 @@ async def run_bot(
                     log.warning(
                         "automatic transition: %s (%s)",
                         transition.phase.value,
+                        transition.reason,
+                    )
+                if transition.phase is not TransitionPhase.LIVE:
+                    log.info(
+                        "rollout: phase=%s pnl=%s ownership=%s fresh_quotes=%d/%d "
+                        "observations=%d edge_samples=%d reason=%s",
+                        transition.phase.value,
+                        pnl_tracker.complete,
+                        trader.order_registry.ownership_verified,
+                        len(fresh_symbols),
+                        len(ALL_SYMBOLS),
+                        transition.observation_samples,
+                        transition.positive_edge_samples,
                         transition.reason,
                     )
                 last_step = now

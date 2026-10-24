@@ -267,3 +267,35 @@ def test_unarmed_startup_still_enforces_initial_caps(tmp_path):
     assert trader.risk.max_gross_exposure == 10_000
     assert trader.risk.max_order_size("PORT") == 1
     assert client.order_limiter.max_events == 5
+
+
+def test_port_test_reduces_inherited_long_without_bypassing_gross_cap(tmp_path):
+    from ctc.execution.models import Position
+    from ctc.execution.runner import _run_port_execution_test
+
+    class Client(_ExecutionTestClient):
+        async def get_positions(self):
+            return [Position("PORT", 120)]
+
+    client = Client()
+    trader = _execution_test_trader(tmp_path, client)
+    trader.state.positions["PORT"] = 120
+    trader.risk.max_gross_exposure = 1000
+    evidence = asyncio.run(_run_port_execution_test(trader, timeout_s=0))
+    assert evidence.passed and evidence.side == "sell"
+    assert evidence.limit_price > evidence.best_ask_before
+
+
+def test_quiet_quotes_are_confirmed_from_actual_rest_books():
+    from ctc.execution.models import BookLevel, OrderBook
+    from ctc.execution.runner import _refresh_stale_quotes
+
+    class Client:
+        async def get_orderbook(self, symbol):
+            return OrderBook(symbol, [BookLevel(10, 1)], [BookLevel(11, 1)])
+
+    state = _build_trader(LiveConfig(), None).state
+    asyncio.run(_refresh_stale_quotes(Client(), state, 10))
+    assert len(state.quotes) == len(ALL_SYMBOLS)
+    assert state.quotes["PORT"].bid == 10
+    assert state.stale_symbols(10) == []

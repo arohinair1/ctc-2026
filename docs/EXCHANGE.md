@@ -1,5 +1,47 @@
 # Exchange Protocol Notes
 
+## Live startup fixes verified on 2026-10-24
+
+The official web client and authenticated read-only probes confirmed:
+`GET /positions?include_zero=true` includes cumulative `realized_pnl` and
+`unrealized_pnl`, including closed positions (flat rows have null unrealized PnL).
+`GET /orders?limit=500` exposes account order IDs, quantities, fill quantities and
+terminal status. `GET /system/bot-trading` exposes bot availability. These routes
+were found in the official web client, not inferred from the public trade tape.
+
+Set `CTC_ACCOUNTING_PROVIDER=ctc.execution.accounting:read_snapshot` to use these
+verified account fields. This provider tracks the change in authoritative cumulative
+account PnL from a persisted session baseline; it does not invent starting equity or
+fill prices. Order states are reconciled by acknowledged ID; omitted bot IDs, invalid
+fields, stale snapshots and ambiguous submissions continue to block live trading.
+
+For an explicitly shared manual account, `CTC_PRESERVE_EXTERNAL_ORDERS=true` preserves
+orders outside this bot's ACK registry, includes all account positions/open orders in
+risk calculations, and never cancels external orders. Default remains false. Earlier
+unresolved external IDs require explicit operator reconciliation before restarting.
+Account PnL and the session loss stop include manual trades as well as bot trades.
+
+Inherited holdings over the initial gross cap may be reduced, but increases remain
+blocked. The PORT one-share passive test chooses a sell above the ask for an inherited
+long, otherwise a buy below the bid. Both sides require ACK, matching open-order readback,
+confirmed cancellation, disappearance and unchanged position. Initial limits remain
+one share/order, five actions/minute and $10,000 gross; dry-run remains the default.
+
+Quiet quotes are refreshed from actual REST books rather than assuming every symbol
+receives a heartbeat. Initial snapshots restore prior final damage reports. Unsent
+observation proposals do not consume churn prices. Strategy orders must have positive
+executable edge; a flat target alone is not a profitable liquidation signal. The rate
+limiter no longer recursively acquires its own lock, and budget exhaustion keeps the
+feed loop running instead of blocking it.
+
+To stop an instance cooperatively, create a file beside its lock with suffix `.stop`
+(e.g. `research/runtime/bot.stop`). The loop exits and cancels only its own tracked orders.
+Remove that stop file deliberately before restarting. Do not delete a held lock.
+
+Validation: 197 tests with the research dataset, Ruff lint/format, authenticated account
+reconciliation, all-symbol market feed, actual passive PORT place/cancel with zero fills,
+and exchange-confirmed strategy fills. No credentials or account recordings are committed.
+
 > Update, 2026-10-24: the team reported HTTP 200 after switching to
 > `https://cornelltradingcompetition.org`; earlier key-blocker statements below
 > refer to the old hurricane subdomain and are superseded. Defaults are fixed;

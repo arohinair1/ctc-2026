@@ -89,6 +89,18 @@ class LiveTrader:
                 continue
             plog.n_candidates += 1
             sym = d.symbol
+            # A target of zero is not evidence of a profitable liquidation. Require
+            # positive executable edge for both entries and inherited-position reductions.
+            mid = mids.get(sym, 0.0)
+            required = (
+                self.strat.cushion_abs
+                + self.strat.cushion_frac * mid
+                + self.strat.uncertainty_k * unc.get(sym, 0.0)
+            )
+            net_edge = fair[sym] - d.executable if d.order > 0 else d.executable - fair[sym]
+            if net_edge <= required:
+                plog.rejected.append((sym, "no_positive_net_edge"))
+                continue
             # churn control: skip if price barely moved vs the last proposal for this symbol
             last = self._last_price.get(sym)
             if last is not None and abs(d.executable - last) < self.cfg.min_reprice_edge:
@@ -140,6 +152,10 @@ class LiveTrader:
                     order.price,
                 )
                 continue
+            limiter = getattr(self.client, "order_limiter", None)
+            if limiter is not None and limiter.would_exceed():
+                log.info("action budget exhausted; continuing market-data monitoring")
+                break
             intent_id: str | None = None
             try:
                 intent_id = self.order_registry.begin_submission(order)
@@ -184,6 +200,9 @@ class LiveTrader:
             self.state.reconcile_positions(positions)
             orders = await self.client.get_open_orders()
             self.state.reconcile_open_orders(orders)
+            if self.cfg.preserve_external_orders and not self.execution_fault:
+                external = [order for order in orders if order.order_id not in self.order_registry.orders]
+                self.order_registry.preserve_manual_orders(external, manual_authorization=True)
             owned_ok = self.order_registry.reconcile(orders)
             self.last_reconcile_ok = owned_ok
             if owned_ok:

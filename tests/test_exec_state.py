@@ -126,3 +126,28 @@ def test_snapshot_resync_is_idempotent():
     st.ingest_frame(Frame(type="news", raw={"type": "news", "message": snap}))
     # round 1 not double-counted; round 2 caught up
     assert st.estimator.reported_rounds == {1, 2}
+
+
+def test_first_connection_snapshot_restores_prior_reports():
+    from ctc.execution.models import Frame
+    from ctc.execution.runner import _build_trader
+    from ctc.execution.settings import LiveConfig
+
+    state = _build_trader(LiveConfig(), None).state
+    state.ingest_frame(
+        Frame(
+            "snapshot",
+            {
+                "type": "snapshot",
+                "damage": [
+                    {
+                        "round": 1,
+                        "stage": "final",
+                        "damage_pct": {"PORT": 5.0, "ISLE": 0.0, "AQUA": 0.0, "GRID": 0.0, "FERRY": 0.0},
+                        "industry_loss_musd": 100.0,
+                    }
+                ],
+            },
+        )
+    )
+    assert 1 in state.estimator.reported_rounds

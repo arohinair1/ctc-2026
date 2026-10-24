@@ -70,6 +70,16 @@ class VerifiedExecution:
 
 
 @dataclass(frozen=True)
+class VerifiedOrderState:
+    order_id: str
+    symbol: str
+    side: str
+    quantity: int
+    filled: float
+    status: str
+
+
+@dataclass(frozen=True)
 class VerifiedPnLSnapshot:
     """Complete account snapshot supplied by an independently verified provider."""
 
@@ -80,6 +90,8 @@ class VerifiedPnLSnapshot:
     source_verified: bool
     execution_history_complete: bool
     executions: tuple[VerifiedExecution, ...] = ()
+    account_pnl_complete: bool = False
+    order_states: tuple[VerifiedOrderState, ...] = ()
 
 
 class ProcessLease:
@@ -136,6 +148,8 @@ class BotOrderRegistry:
         self.unresolved: set[str] = set()
         self.last_reconciliation_complete = False
         self.execution_history_complete = False
+        self.order_history_complete = False
+        self.manual_orders: dict[str, dict[str, Any]] = {}
         self.execution_test_attempted = False
         self.execution_test_result: dict[str, Any] | None = None
         if self.path and self.path.exists():
@@ -146,6 +160,7 @@ class BotOrderRegistry:
         try:
             data = json.loads(self.path.read_text())
             self.orders = {k: OwnedOrder(**v) for k, v in data.get("orders", {}).items()}
+            self.manual_orders = data.get("manual_orders", {})
             self.pending_intents = data.get("pending_intents", {})
             self.unresolved = set(data.get("unresolved", []))
             self.execution_history_complete = False  # refreshed from the provider on every start
@@ -162,6 +177,7 @@ class BotOrderRegistry:
         payload = {
             "version": 1,
             "orders": {k: asdict(v) for k, v in self.orders.items()},
+            "manual_orders": self.manual_orders,
             "pending_intents": self.pending_intents,
             "unresolved": sorted(self.unresolved),
             "execution_history_complete": self.execution_history_complete,
@@ -303,8 +319,80 @@ class BotOrderRegistry:
             self.unresolved.add(order_id)
         self._save()
 
+    def preserve_manual_orders(self, orders: list[OpenOrder], *, manual_authorization: bool) -> None:
+        """Recognize explicitly identified manual IDs without owning or cancelling them."""
+        if not manual_authorization:
+            raise PermissionError("manual-order identification requires operator authorization")
+        for order in orders:
+            if not order.order_id or order.order_id in self.orders:
+                raise OrderRegistryError("manual order overlaps bot-owned registry")
+            self.manual_orders[order.order_id] = {
+                "symbol": order.symbol,
+                "side": order.side.value,
+                "quantity": order.quantity,
+                "price": order.price,
+            }
+            self.unresolved.discard(order.order_id)
+        self._save()
+
+    def reconcile_order_states(self, states: tuple[VerifiedOrderState, ...]) -> bool:
+        """Use account order history for quantities/status, never invent execution prices.
+
+        This path is used only with independently authoritative cumulative account PnL.
+        A truncated history that omits any of our IDs fails closed.
+        """
+        self.order_history_complete = False
+        remote = {state.order_id: state for state in states}
+        if len(remote) != len(states) or self.pending_intents:
+            return False
+        for oid, local in self.orders.items():
+            state = remote.get(oid)
+            if state is None:
+                return False
+            if (
+                state.symbol != local.symbol
+                or state.side != local.side
+                or state.quantity != local.quantity
+                or not math.isfinite(state.filled)
+                or not local.filled_quantity <= state.filled <= local.quantity
+            ):
+                return False
+            status = state.status.lower().replace("canceled", "cancelled")
+            if status not in {
+                "open",
+                "pending",
+                "new",
+                "accepted",
+                "partially_filled",
+                "filled",
+                "cancelled",
+                "rejected",
+            }:
+                return False
+            if status == "filled" and state.filled != local.quantity:
+                return False
+            local.filled_quantity = state.filled
+            local.status = status
+            if status == "cancelled":
+                local.cancellation_confirmed = True
+        self.order_history_complete = True
+        self._save()
+        return not self.pending_intents and not self.unresolved
+
     def reconcile(self, exchange_orders: list[OpenOrder]) -> bool:
-        remote = {o.order_id: o for o in exchange_orders if o.order_id}
+        for order in exchange_orders:
+            manual = self.manual_orders.get(order.order_id)
+            if manual is not None and (
+                order.symbol != manual["symbol"]
+                or order.side.value != manual["side"]
+                or order.quantity != manual["quantity"]
+                or order.price != manual["price"]
+            ):
+                self.last_reconciliation_complete = False
+                return False
+        remote = {
+            o.order_id: o for o in exchange_orders if o.order_id and o.order_id not in self.manual_orders
+        }
         unknown = set(remote) - set(self.orders)
         remote_terminal = {
             oid
@@ -351,6 +439,8 @@ class BotOrderRegistry:
 
     @property
     def execution_records_complete(self) -> bool:
+        if self.order_history_complete:
+            return not self.pending_intents and not self.unresolved
         if not self.execution_history_complete:
             return False
         for order in self.orders.values():
@@ -389,6 +479,7 @@ class SessionPnLTracker:
     verified_at: float | None = None
     source_verified: bool = False
     loss_latched: bool = False
+    pnl_only: bool = False
 
     def __post_init__(self) -> None:
         if self.loss_limit <= 0 or self.max_age_s <= 0:
@@ -406,6 +497,7 @@ class SessionPnLTracker:
                     "verified_at",
                     "source_verified",
                     "loss_latched",
+                    "pnl_only",
                 ):
                     setattr(self, name, data.get(name))
             except (OSError, ValueError, TypeError) as exc:
@@ -420,24 +512,32 @@ class SessionPnLTracker:
         realized_pnl: float | None,
         unrealized_pnl: float | None,
         source_verified: bool,
+        account_pnl_complete: bool = False,
     ) -> bool:
-        values = (starting_equity, realized_pnl, unrealized_pnl)
+        pnl_only = account_pnl_complete and starting_equity is None
+        values = (
+            (realized_pnl, unrealized_pnl) if pnl_only else (starting_equity, realized_pnl, unrealized_pnl)
+        )
         complete = (
             source_verified
             and all(v is not None and math.isfinite(float(v)) for v in values)
-            and float(starting_equity) > 0
+            and (pnl_only or float(starting_equity) > 0)
         )
         if not complete:
             self.source_verified = False
             self.verified_at = None
             self._save()
             return False
-        if self.source_starting_equity is None:
-            self.source_starting_equity = float(starting_equity)
-            self.starting_equity = float(starting_equity)
+        if self.baseline_realized is None:
+            self.pnl_only = pnl_only
+            self.source_starting_equity = None if pnl_only else float(starting_equity)
+            self.starting_equity = self.source_starting_equity
             self.baseline_realized = float(realized_pnl)
             self.baseline_unrealized = float(unrealized_pnl)
-        elif not math.isclose(float(starting_equity), self.source_starting_equity, rel_tol=0, abs_tol=0.01):
+        elif self.pnl_only != pnl_only or (
+            not pnl_only
+            and not math.isclose(float(starting_equity), self.source_starting_equity, rel_tol=0, abs_tol=0.01)
+        ):
             self.source_verified = False
             self.verified_at = None
             self._save()
@@ -466,6 +566,7 @@ class SessionPnLTracker:
                 "verified_at",
                 "source_verified",
                 "loss_latched",
+                "pnl_only",
             )
         }
         fd, tmp_name = tempfile.mkstemp(prefix=".session-pnl-", dir=self.path.parent)
@@ -486,7 +587,7 @@ class SessionPnLTracker:
             self.source_verified
             and self.verified_at is not None
             and self.clock() - self.verified_at <= self.max_age_s
-            and self.starting_equity is not None
+            and (self.pnl_only or self.starting_equity is not None)
             and self.baseline_realized is not None
             and self.baseline_unrealized is not None
             and self.realized_pnl is not None
@@ -512,8 +613,9 @@ class SessionPnLTracker:
         if not self.complete:
             raise ValueError("cannot resume without a fresh, complete PnL snapshot")
         assert self.realized_pnl is not None and self.unrealized_pnl is not None
-        assert self.session_pnl is not None and self.starting_equity is not None
-        self.starting_equity += self.session_pnl
+        assert self.session_pnl is not None
+        if self.starting_equity is not None:
+            self.starting_equity += self.session_pnl
         self.baseline_realized = self.realized_pnl
         self.baseline_unrealized = self.unrealized_pnl
         self.loss_latched = False
@@ -554,6 +656,7 @@ class ExecutionTestEvidence:
     port_position_after: int
     competition_id: str | None = None
     execution_integrity: bool = True
+    best_ask_before: float | None = None
 
     @property
     def passed(self) -> bool:
@@ -561,11 +664,18 @@ class ExecutionTestEvidence:
             (
                 bool(self.order_id),
                 self.symbol == "PORT",
-                self.side == "buy",
+                self.side in {"buy", "sell"},
                 self.quantity == 1,
                 math.isfinite(self.limit_price) and self.limit_price > 0,
                 math.isfinite(self.best_bid_before) and self.best_bid_before > 0,
-                self.limit_price < self.best_bid_before,
+                (self.side == "buy" and self.limit_price < self.best_bid_before)
+                or (
+                    self.side == "sell"
+                    and self.best_ask_before is not None
+                    and math.isfinite(self.best_ask_before)
+                    and self.best_ask_before > 0
+                    and self.limit_price > self.best_ask_before
+                ),
                 math.isfinite(self.fill_quantity),
                 self.fill_quantity == 0,
                 self.appeared_in_open_orders,

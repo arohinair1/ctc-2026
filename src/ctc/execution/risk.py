@@ -90,8 +90,11 @@ class RiskManager:
             return self._reject(req, "clamped_to_zero")
 
         # gross-exposure cap (projected)
-        projected = gross_exposure + abs(clamped) * mid
-        if projected > self.max_gross_exposure:
+        exposure_change = (abs(position + clamped) - abs(position)) * mid
+        projected = gross_exposure + exposure_change
+        # Inherited manual holdings may already exceed the cap. Allow orders
+        # that strictly reduce that exposure; continue blocking every increase.
+        if projected > self.max_gross_exposure and exposure_change >= 0:
             return self._reject(req, "max_gross_exposure")
 
         adjusted = OrderRequest(

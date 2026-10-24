@@ -94,6 +94,7 @@ class LiveConfig:
     initial_max_order_size_units: int = 1
     automatic_transition_enabled: bool = False
     accounting_provider: str = ""
+    preserve_external_orders: bool = False
     order_registry_path: str = "research/runtime/order_registry.json"
     session_pnl_path: str = "research/runtime/session_pnl.json"
     process_lock_path: str = "research/runtime/bot.lock"
@@ -152,6 +153,7 @@ class LiveConfig:
             initial_max_order_size_units=_env_int("CTC_INITIAL_MAX_ORDER_UNITS", 1),
             automatic_transition_enabled=_env_bool("CTC_AUTO_TRANSITION", False),
             accounting_provider=os.environ.get("CTC_ACCOUNTING_PROVIDER", "").strip(),
+            preserve_external_orders=_env_bool("CTC_PRESERVE_EXTERNAL_ORDERS", False),
             order_registry_path=os.environ.get(
                 "CTC_ORDER_REGISTRY_PATH", "research/runtime/order_registry.json"
             ),

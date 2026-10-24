@@ -77,16 +77,18 @@ class RateLimiter:
         self._lock = asyncio.Lock()
 
     async def acquire(self) -> None:
-        async with self._lock:
-            now = self._clock()
-            while self._events and now - self._events[0] >= self.window_s:
-                self._events.popleft()
-            if len(self._events) >= self.max_events:
+        while True:
+            async with self._lock:
+                now = self._clock()
+                while self._events and now - self._events[0] >= self.window_s:
+                    self._events.popleft()
+                if len(self._events) < self.max_events:
+                    self._events.append(now)
+                    return
                 wait = self.window_s - (now - self._events[0])
-                log.warning("rate limit %d/%ds reached; waiting %.1fs", self.max_events, self.window_s, wait)
-                await asyncio.sleep(max(0.0, wait))
-                return await self.acquire()
-            self._events.append(self._clock())
+            # Never recurse while holding our non-reentrant lock.
+            log.warning("rate limit %d/%ds reached; waiting %.1fs", self.max_events, self.window_s, wait)
+            await asyncio.sleep(max(0.0, wait))
 
     def would_exceed(self) -> bool:
         now = self._clock()

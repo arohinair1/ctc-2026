@@ -1,5 +1,9 @@
 # AGENTS.md — working in this repo
 
+> Live update: verified account-PnL/order-history provider now exists; see the first section
+> of docs/BOT_OPERATIONS.md. Passive PORT execution test and strategy fills were confirmed.
+> Current local suite: 197 tests. Earlier missing-accounting claims below are historical.
+
 > Update, 2026-10-24: the team reported HTTP 200 after switching to
 > `https://cornelltradingcompetition.org`; earlier key-blocker statements below
 > refer to the old hurricane subdomain and are superseded. Defaults are fixed;

@@ -362,20 +362,31 @@ async def run_bot(
         """Apply trusted fills before open-order reconciliation, then refresh session PnL."""
         snapshot: VerifiedPnLSnapshot | None = None
         fills_complete = False
-        if accounting_provider is not None:
-            try:
-                snapshot = await accounting_provider(client)
-                if snapshot.account_pnl_complete:
-                    fills_complete = trader.order_registry.reconcile_order_states(snapshot.order_states)
-                else:
-                    fills_complete = trader.order_registry.reconcile_executions(
-                        snapshot.executions,
-                        history_complete=snapshot.execution_history_complete,
-                    )
-            except Exception as exc:  # noqa: BLE001 - accounting failure fails closed
-                log.warning("verified account snapshot unavailable (%s)", type(exc).__name__)
-                snapshot = None
-        await trader.reconcile()
+        # History and open-order reads are separate snapshots. A just-filled order
+        # can disappear between them; retry once with fresh authoritative history.
+        for attempt in range(2):
+            if accounting_provider is not None:
+                try:
+                    snapshot = await accounting_provider(client)
+                    if snapshot.account_pnl_complete:
+                        fills_complete = trader.order_registry.reconcile_order_states(snapshot.order_states)
+                    else:
+                        fills_complete = trader.order_registry.reconcile_executions(
+                            snapshot.executions,
+                            history_complete=snapshot.execution_history_complete,
+                        )
+                except Exception as exc:  # noqa: BLE001 - accounting failure fails closed
+                    log.warning("verified account snapshot unavailable (%s)", type(exc).__name__)
+                    snapshot = None
+            await trader.reconcile()
+            if (
+                snapshot is None
+                or not snapshot.account_pnl_complete
+                or (fills_complete and trader.last_reconcile_ok)
+            ):
+                break
+            if attempt == 0:
+                await asyncio.sleep(0.1)
         if snapshot is None:
             pnl_tracker.update(
                 starting_equity=None,

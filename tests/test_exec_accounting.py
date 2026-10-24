@@ -121,3 +121,42 @@ def test_inherited_excess_exposure_can_be_reduced_but_not_increased():
     )
     assert risk.evaluate(OrderRequest("PORT", Side.SELL, 1, price=60), **args).approved
     assert not risk.evaluate(OrderRequest("PORT", Side.BUY, 1, price=60), **args).approved
+
+
+def test_pending_order_disappearance_is_resolved_only_by_verified_terminal_history():
+    registry = BotOrderRegistry()
+    intent = registry.begin_submission(OrderRequest("FERRY", Side.BUY, 1, price=18.54))
+    registry.record_ack(intent, OrderAck("ours", "FERRY", "pending"))
+    assert not registry.reconcile([])
+    assert "ours" in registry.unresolved
+    active = VerifiedOrderState("ours", "FERRY", "buy", 1, 0, "pending")
+    assert not registry.reconcile_order_states((active,))
+    assert "ours" in registry.unresolved
+    terminal = replace(active, filled=1, status="filled")
+    assert not registry.reconcile_order_states((replace(terminal, side="sell"),))
+    assert "ours" in registry.unresolved
+    assert registry.reconcile_order_states((terminal,))
+    assert registry.reconcile([])
+    assert registry.ownership_verified
+
+
+def test_verified_fill_does_not_clear_unrelated_ambiguous_submission():
+    registry = BotOrderRegistry()
+    intent = registry.begin_submission(OrderRequest("FERRY", Side.BUY, 1, price=18))
+    registry.record_ack(intent, OrderAck("ours", "FERRY", "pending"))
+    registry.unresolved.add("unknown-intent")
+    assert not registry.reconcile_order_states((VerifiedOrderState("ours", "FERRY", "buy", 1, 1, "filled"),))
+    assert "unknown-intent" in registry.unresolved
+
+
+def test_invalid_later_order_prevents_partial_history_latch_resolution():
+    registry = BotOrderRegistry()
+    for oid in ("first", "second"):
+        intent = registry.begin_submission(OrderRequest("FERRY", Side.BUY, 1, price=18))
+        registry.record_ack(intent, OrderAck(oid, "FERRY", "pending"))
+    assert not registry.reconcile([])
+    first = VerifiedOrderState("first", "FERRY", "buy", 1, 1, "filled")
+    wrong_second = VerifiedOrderState("second", "FERRY", "sell", 1, 1, "filled")
+    assert not registry.reconcile_order_states((first, wrong_second))
+    assert registry.unresolved == {"first", "second"}
+    assert registry.orders["first"].status == "pending"

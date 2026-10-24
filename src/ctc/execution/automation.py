@@ -345,6 +345,7 @@ class BotOrderRegistry:
         remote = {state.order_id: state for state in states}
         if len(remote) != len(states) or self.pending_intents:
             return False
+        validated = []
         for oid, local in self.orders.items():
             state = remote.get(oid)
             if state is None:
@@ -371,10 +372,18 @@ class BotOrderRegistry:
                 return False
             if status == "filled" and state.filled != local.quantity:
                 return False
+            validated.append((oid, local, state, status))
+        # Validate every ID before changing any state or resolving a latch.
+        for oid, local, state, status in validated:
             local.filled_quantity = state.filled
             local.status = status
             if status == "cancelled":
                 local.cancellation_confirmed = True
+            if status in {"filled", "cancelled", "rejected"}:
+                # A fill may remove an order from /orders/open before the separate
+                # history read catches up. Verified same-ID terminal evidence resolves
+                # that disappearance; ambiguous intents and unrelated IDs stay latched.
+                self.unresolved.discard(oid)
         self.order_history_complete = True
         self._save()
         return not self.pending_intents and not self.unresolved

@@ -157,6 +157,9 @@ def main() -> int:
     )
     args = parser.parse_args()
     cfg = LiveConfig.from_env()
+    if not args.live and not cfg.dry_run:
+        log.error("CTC_DRY_RUN=false requires --live; refusing to start without both live gates.")
+        return 2
     if args.live and cfg.dry_run:
         log.error("--live passed but CTC_DRY_RUN still true; refusing. Set CTC_DRY_RUN=false to confirm.")
         return 2

@@ -6,7 +6,7 @@ import asyncio
 import json
 
 from ctc.execution.models import Frame
-from ctc.execution.runner import run_bot
+from ctc.execution.runner import main, run_bot
 from ctc.execution.settings import LiveConfig
 
 
@@ -54,3 +54,16 @@ def test_runner_polls_status_and_records_single_stream(monkeypatch, tmp_path):
     assert client.channels == ["news", "quotes", "trades", "orderbook"]
     recorded = [json.loads(line) for line in (tmp_path / "feed.jsonl").read_text().splitlines()]
     assert recorded == [{"type": "quote", "symbol": "PORT", "bid": 70.0, "ask": 71.0, "received_at": 123.0}]
+
+
+def test_live_mode_requires_both_environment_and_cli_gates(monkeypatch):
+    monkeypatch.setattr("ctc.execution.runner.setup_logging", lambda: None)
+    config = LiveConfig(dry_run=False)
+    monkeypatch.setattr("ctc.execution.runner.LiveConfig.from_env", lambda: config)
+    monkeypatch.setattr("sys.argv", ["ctc-bot"])
+
+    assert main() == 2
+
+    config.dry_run = True
+    monkeypatch.setattr("sys.argv", ["ctc-bot", "--live"])
+    assert main() == 2

@@ -43,7 +43,7 @@ off packaged model artifacts (`src/ctc/models/*.json`); data-backed tests auto-s
 ```bash
 ruff format src tests
 ruff check src tests          # must pass (line length 110)
-pytest -q                     # 131 tests must pass
+pytest -q                     # 135 tests must pass (plus 17 separate quote-aware checks)
 ```
 
 CI (`.github/workflows/ci.yml`) runs lint + format + pytest on 3.10–3.13.
@@ -71,9 +71,12 @@ CI (`.github/workflows/ci.yml`) runs lint + format + pytest on 3.10–3.13.
 
 ## Current status (keep this honest)
 
-Research done; live stack built and tested (131 tests). Record→replay→dry-run round-trip
+Research done; live stack built and tested (135 tests). Record→replay→dry-run round-trip
 verified offline. Corrected host `https://cornelltradingcompetition.org` accepts read-only
 REST auth; one dry-run bot process has an established exchange TLS socket. Latest competition
 state was `ready`, with flat positions and an empty PORT book. Do not open a duplicate WS
-client. Next: verify fresh live frames when the season runs, then seek explicit approval for
-the documented place+cancel test. See [docs/CHECKLIST.md](docs/CHECKLIST.md).
+client. The quote-aware teammate candidate is research-only and is not the strategy loaded by
+`ctc-bot`; compare it with the baseline under a common evaluation before promotion. Next:
+verify fresh live frames when the season runs, then seek explicit approval for the documented
+place+cancel test. The already-running process still has the code loaded at its startup; a
+controlled restart is required to load local updates. See [docs/CHECKLIST.md](docs/CHECKLIST.md).

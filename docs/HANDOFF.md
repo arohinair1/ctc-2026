@@ -6,6 +6,14 @@
 > local `.env` overrides must also be updated. Authenticated feed/order behavior
 > remains unverified by this agent. See [quote-aware review](QUOTE_AWARE_REVIEW.md).
 
+> Update, 2026-10-24: teammate commit `a76b17e` is now included on this branch. It adds an
+> isolated quote-aware model and replay research. It has not been promoted into `ctc-bot`:
+> its PnL assumptions differ from the baseline and need a common held-out comparison first.
+> The local runner work subscribes to all documented feed channels and records raw events;
+> the baseline still forms signals from storm/damage inputs plus current bid/ask quotes.
+> Trades/order-book depth are retained for inspection, not yet used in signal sizing.
+> Latest local validation: 135 main-suite tests and 17 quote-aware research checks pass.
+
 
 Status of the research **and live-bot** baseline on branch `feat/research-baseline`, and what
 is left before and during the event. Companion docs: [ARCHITECTURE.md](ARCHITECTURE.md),

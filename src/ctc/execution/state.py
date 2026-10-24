@@ -17,6 +17,7 @@ without double-counting already-ingested damage reports.
 from __future__ import annotations
 
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -39,10 +40,13 @@ class LiveState:
 
     quotes: dict[str, Quote] = field(default_factory=dict)
     books: dict[str, OrderBook] = field(default_factory=dict)
+    recent_trades: deque[Frame] = field(default_factory=lambda: deque(maxlen=1000))
     positions: dict[str, int] = field(default_factory=dict)
     open_orders: dict[str, OpenOrder] = field(default_factory=dict)
 
     competition_id: str | None = None
+    exchange_state: str | None = None
+    exchange_state_checked_at: float | None = None
     current_round: int | None = None
     current_storm: str | None = None
     phase: str | None = None
@@ -75,6 +79,9 @@ class LiveState:
             b = OrderBook.parse(frame.raw, received_at=frame.received_at or self.clock())
             if b.symbol:
                 self.books[b.symbol] = b
+            return
+        if t == "trade":
+            self.recent_trades.append(frame)
             return
         if t == "news":
             msg = frame.message
@@ -129,6 +136,9 @@ class LiveState:
 
     def on_new_season(self, competition_id: str | None = None) -> None:
         self.estimator.reset()
+        self.quotes.clear()
+        self.books.clear()
+        self.recent_trades.clear()
         self._seen_seq.clear()
         self._max_seq = -1
         self.current_round = None
@@ -137,6 +147,32 @@ class LiveState:
         self.open_orders.clear()
         if competition_id is not None:
             self.competition_id = competition_id
+
+    def update_exchange_status(self, info: dict[str, Any]) -> bool:
+        """Update status from the authoritative clock endpoint; return whether the season changed."""
+        competition_id = info.get("competition_id")
+        changed = bool(
+            isinstance(competition_id, str)
+            and self.competition_id is not None
+            and competition_id != self.competition_id
+        )
+        if changed:
+            self.on_new_season(competition_id)
+        elif isinstance(competition_id, str):
+            self.competition_id = competition_id
+        state = info.get("state")
+        self.exchange_state = state if isinstance(state, str) else None
+        self.exchange_state_checked_at = self.clock()
+        return changed
+
+    def market_is_running(self, max_age_s: float = 10.0, now: float | None = None) -> bool:
+        """Require a fresh, authoritative running state before live submissions."""
+        now = self.clock() if now is None else now
+        return (
+            self.exchange_state == "running"
+            and self.exchange_state_checked_at is not None
+            and now - self.exchange_state_checked_at <= max_age_s
+        )
 
     def _resync_from_snapshot(self, snap: dict[str, Any]) -> None:
         """Idempotently catch up damage reports missed during a disconnect.
@@ -198,8 +234,11 @@ class LiveState:
         return {
             "round": self.current_round,
             "storm": self.current_storm,
+            "competition_id": self.competition_id,
+            "exchange_state": self.exchange_state,
             "frames": self.n_frames,
             "feed_msgs": self.n_feed_msgs,
+            "trades": len(self.recent_trades),
             "duplicates": self.n_duplicates,
             "out_of_order": self.n_out_of_order,
             "quotes": len(self.quotes),

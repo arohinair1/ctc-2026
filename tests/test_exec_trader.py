@@ -16,13 +16,15 @@ class FakeClient:
     def __init__(self):
         self.placed = []
         self.cancelled = 0
+        self.cancelled_ids = []
 
     async def place_order(self, req):
         self.placed.append(req)
         return OrderAck(order_id=f"id{len(self.placed)}", symbol=req.symbol, status="accepted")
 
-    async def cancel_all(self, symbol=None):
+    async def cancel_order(self, order_id):
         self.cancelled += 1
+        self.cancelled_ids.append(order_id)
         return {}
 
     async def get_positions(self):
@@ -81,6 +83,7 @@ def test_dry_run_never_submits():
 
 def test_live_mode_submits():
     state = _overpriced_state()
+    state.update_exchange_status({"competition_id": "test", "state": "running"})
     trader, _ = _trader(state, dry_run=False)
     asyncio.run(trader.step())
     assert len(trader.client.placed) >= 1
@@ -111,6 +114,19 @@ def test_shutdown_cancels_only_when_live():
     trader, _ = _trader(state, dry_run=True)
     asyncio.run(trader.shutdown())
     assert trader.client.cancelled == 0  # dry-run: no cancels
+    state.update_exchange_status({"competition_id": "test", "state": "running"})
     trader2, _ = _trader(state, dry_run=False)
+    trader2._submitted_order_ids.add("bot-order")
     asyncio.run(trader2.shutdown())
     assert trader2.client.cancelled == 1
+    assert trader2.client.cancelled_ids == ["bot-order"]
+
+
+def test_live_submission_requires_fresh_running_state():
+    state = _overpriced_state()
+    trader, _ = _trader(state, dry_run=False)
+    asyncio.run(trader.step())
+    assert trader.client.placed == []
+    state.update_exchange_status({"competition_id": "test", "state": "ready"})
+    asyncio.run(trader.step())
+    assert trader.client.placed == []

@@ -61,6 +61,32 @@ def test_season_rollover_resets_state():
     assert st.estimator.reported_rounds == {1}  # reset then re-ingested
 
 
+def test_competition_id_change_clears_old_market_state():
+    st = _state()
+    st.update_exchange_status({"competition_id": "season-a", "state": "running"})
+    st.ingest_frame(Frame(type="quote", raw={"type": "quote", "symbol": "PORT", "bid": 70, "ask": 71}))
+    st.ingest_frame(Frame(type="orderbook", raw={"type": "orderbook", "symbol": "PORT", "bids": [[70, 2]]}))
+    trade = Frame(type="trade", raw={"type": "trade", "symbol": "PORT"})
+    st.ingest_frame(trade)
+    assert st.market_is_running()
+
+    changed = st.update_exchange_status({"competition_id": "season-b", "state": "ready"})
+
+    assert changed
+    assert st.competition_id == "season-b"
+    assert st.exchange_state == "ready"
+    assert st.quotes == {} and st.books == {}
+    assert list(st.recent_trades) == []
+    assert not st.market_is_running()
+
+
+def test_trade_frames_are_retained_without_assuming_payload_shape():
+    st = _state()
+    frame = Frame(type="trade", raw={"type": "trade", "payload": {"unknown": "shape"}})
+    st.ingest_frame(frame)
+    assert list(st.recent_trades) == [frame]
+
+
 def test_stale_symbols_uses_clock():
     now = [1000.0]
     st = LiveState(build_live_estimator(), clock=lambda: now[0])

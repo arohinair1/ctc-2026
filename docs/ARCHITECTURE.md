@@ -82,3 +82,17 @@ backtest.
   `tests/test_exec_*.py`).
 * **Leakage safety carries over.** The same `SeasonEstimator` used in the backtest consumes
   the live feed, so live valuations match validated behavior.
+
+## Live inputs and update cadence
+
+The runner refreshes competition status every five seconds and recalculates decisions every
+five seconds, using the latest accepted storm observations/damage reports and executable
+bid/ask quotes. Its WebSocket subscription also requests `trades` and `orderbook`; these
+frames are retained/recorded for inspection, but the baseline signal model does not yet use
+trade flow or depth to change fair values or sizing. Advisory messages are not currently a
+feature of the baseline estimator. The quote-aware model added under
+`research/quote_aware/` is a separate research candidate, not loaded by `ctc-bot`.
+
+This is adaptive decision-making from new inputs, not online model retraining or code
+self-modification. Promote the candidate only after both strategies are evaluated on the
+same seasons, fills, costs, sizing and settlement assumptions.

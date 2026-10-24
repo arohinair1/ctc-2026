@@ -14,6 +14,7 @@ import argparse
 import asyncio
 import json
 import time
+from pathlib import Path
 
 from ctc.config import ALL_SYMBOLS
 from ctc.execution.client import ExchangeClient
@@ -38,24 +39,86 @@ def _build_trader(cfg: LiveConfig, client: ExchangeClient) -> LiveTrader:
 # ---------------------------------------------------------------------------
 # ctc-bot — live loop
 # ---------------------------------------------------------------------------
-async def run_bot(cfg: LiveConfig, *, step_interval_s: float = 2.0, reconcile_every_s: float = 20.0) -> None:
+async def run_bot(
+    cfg: LiveConfig,
+    *,
+    step_interval_s: float = 5.0,
+    reconcile_every_s: float = 20.0,
+    status_poll_s: float = 5.0,
+    recording_path: str | Path | None = None,
+) -> None:
     client = ExchangeClient(cfg)
     trader = _build_trader(cfg, client)
     log.info("starting bot | %s", json.dumps(cfg.redacted()))
     if cfg.dry_run:
         log.warning("DRY-RUN mode: decisions are logged but NO orders will be submitted")
 
+    async def poll_status() -> None:
+        previous = (trader.state.competition_id, trader.state.exchange_state)
+        try:
+            info = await client.get_time()
+        except Exception as exc:  # noqa: BLE001 - fail closed for live order execution
+            trader.state.exchange_state = None
+            trader.state.exchange_state_checked_at = None
+            log.warning("competition status poll failed (%s)", type(exc).__name__)
+            return
+        changed_season = trader.state.update_exchange_status(info)
+        current = (trader.state.competition_id, trader.state.exchange_state)
+        if current != previous:
+            log.info(
+                "competition status: id=%s state=%s fictional_time=%s",
+                current[0],
+                current[1],
+                info.get("fictional_time"),
+            )
+        if changed_season:
+            log.info("competition id changed; local season state reset")
+            await trader.reconcile()
+
+    await poll_status()
     await trader.reconcile()
-    channels = ["news", "quotes"]
+    channels = ["news", "quotes", "trades", "orderbook"]
     last_step = 0.0
     last_reconcile = time.monotonic()
+    last_status_poll = time.monotonic()
+    stream = client.stream(ALL_SYMBOLS, channels)
+    next_frame = asyncio.create_task(anext(stream))
+    record_file = None
+    if recording_path is not None:
+        try:
+            out = Path(recording_path)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            record_file = out.open("a")
+            log.info("recording market feed to %s", out)
+        except OSError as exc:
+            log.error("could not open recording path (%s); continuing without recording", type(exc).__name__)
     try:
-        async for frame in client.stream(ALL_SYMBOLS, channels):
-            trader.state.ingest_frame(frame)
+        while True:
             now = time.monotonic()
-            if frame.type == "_reconnect":
-                await trader.reconcile()
-                continue
+            wait_s = max(0.0, status_poll_s - (now - last_status_poll))
+            done, _ = await asyncio.wait({next_frame}, timeout=wait_s)
+            now = time.monotonic()
+            if next_frame in done:
+                try:
+                    frame = next_frame.result()
+                except StopAsyncIteration:
+                    break
+                next_frame = asyncio.create_task(anext(stream))
+                trader.state.ingest_frame(frame)
+                if record_file is not None:
+                    try:
+                        event = {**frame.raw, "received_at": frame.received_at or time.time()}
+                        record_file.write(json.dumps(event) + "\n")
+                        record_file.flush()
+                    except OSError as exc:
+                        log.error("feed recording stopped after write error (%s)", type(exc).__name__)
+                        record_file.close()
+                        record_file = None
+                if frame.type == "_reconnect":
+                    await trader.reconcile()
+            if now - last_status_poll >= status_poll_s:
+                await poll_status()
+                last_status_poll = time.monotonic()
             if now - last_step >= step_interval_s:
                 plog = await trader.step()
                 last_step = now
@@ -67,6 +130,12 @@ async def run_bot(cfg: LiveConfig, *, step_interval_s: float = 2.0, reconcile_ev
     except (KeyboardInterrupt, asyncio.CancelledError):
         log.info("interrupted; shutting down")
     finally:
+        if not next_frame.done():
+            next_frame.cancel()
+            await asyncio.gather(next_frame, return_exceptions=True)
+        if record_file is not None:
+            record_file.close()
+        await stream.aclose()
         await trader.shutdown()
         log.info("final status: %s", json.dumps(trader.status()))
 
@@ -74,7 +143,13 @@ async def run_bot(cfg: LiveConfig, *, step_interval_s: float = 2.0, reconcile_ev
 def main() -> int:
     setup_logging()
     parser = argparse.ArgumentParser(description="Run the CTC live trading bot (dry-run by default).")
-    parser.add_argument("--step-interval", type=float, default=2.0, help="seconds between decision cycles")
+    parser.add_argument("--step-interval", type=float, default=5.0, help="seconds between decision cycles")
+    parser.add_argument(
+        "--recording",
+        type=Path,
+        default=Path("research/recordings/live.jsonl"),
+        help="append raw feed frames to this gitignored JSONL file",
+    )
     parser.add_argument(
         "--live",
         action="store_true",
@@ -88,7 +163,7 @@ def main() -> int:
     if not cfg.has_key():
         log.error("no CTC_API_KEY found (set it in .env)")
         return 2
-    asyncio.run(run_bot(cfg, step_interval_s=args.step_interval))
+    asyncio.run(run_bot(cfg, step_interval_s=args.step_interval, recording_path=args.recording))
     return 0
 
 
@@ -103,7 +178,9 @@ async def run_probe(cfg: LiveConfig, *, listen_s: float = 0.0) -> dict:
         try:
 
             async def _listen() -> None:
-                async for frame in client.stream(ALL_SYMBOLS, ["news", "quotes"], max_reconnects=0):
+                async for frame in client.stream(
+                    ALL_SYMBOLS, ["news", "quotes", "trades", "orderbook"], max_reconnects=0
+                ):
                     if frame.type != "_reconnect":
                         frames.append(frame.type)
 

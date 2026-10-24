@@ -45,6 +45,7 @@ class LiveTrader:
 
     # churn control: last proposed limit price per symbol
     _last_price: dict[str, float] = field(default_factory=dict)
+    _submitted_order_ids: set[str] = field(default_factory=set)
     n_submitted: int = 0
     n_dry_run: int = 0
 
@@ -111,6 +112,10 @@ class LiveTrader:
 
     # ---- execution stage (I/O; gated) ---------------------------------
     async def execute(self, plog: ProposalLog) -> None:
+        if not self.cfg.dry_run and not self.state.market_is_running(self.cfg.stale_after_s):
+            if plog.approved:
+                log.warning("live order gate: exchange status is not freshly confirmed as running")
+            return
         for order in plog.approved:
             if self.cfg.dry_run or self.cfg.kill_switch:
                 self.n_dry_run += 1
@@ -125,6 +130,8 @@ class LiveTrader:
             try:
                 ack = await self.client.place_order(order)
                 self.n_submitted += 1
+                if ack.order_id:
+                    self._submitted_order_ids.add(ack.order_id)
                 log.info("SUBMITTED %s -> order_id=%s status=%s", order.symbol, ack.order_id, ack.status)
             except ExchangeError as exc:
                 log.warning("order rejected by exchange: %s (%s)", order.symbol, exc)
@@ -149,11 +156,12 @@ class LiveTrader:
     async def shutdown(self, cancel_orders: bool = True) -> None:
         """Safe shutdown: optionally cancel all resting orders (never in dry-run)."""
         if cancel_orders and not (self.cfg.dry_run or self.cfg.kill_switch):
-            try:
-                await self.client.cancel_all()
-                log.info("cancelled all resting orders on shutdown")
-            except ExchangeError as exc:
-                log.warning("cancel_all on shutdown failed: %s", exc)
+            for order_id in tuple(self._submitted_order_ids):
+                try:
+                    await self.client.cancel_order(order_id)
+                    log.info("cancelled bot-owned order %s on shutdown", order_id)
+                except ExchangeError as exc:
+                    log.warning("cancel of bot-owned order %s failed: %s", order_id, exc)
         else:
             log.info("shutdown: dry_run/kill_switch -> no cancels sent")
 

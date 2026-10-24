@@ -15,6 +15,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from ctc.execution.automation import (
+    AutomaticTransition,
+    BotOrderRegistry,
+    OrderRegistryError,
+    SessionPnLTracker,
+)
 from ctc.execution.client import ExchangeClient, ExchangeError
 from ctc.execution.log import get_logger
 from ctc.execution.models import OrderRequest, OrderType, Side
@@ -42,6 +48,10 @@ class LiveTrader:
     risk: RiskManager
     cfg: LiveConfig
     strat: StrategyConfig = field(default_factory=StrategyConfig)
+    order_registry: BotOrderRegistry = field(default_factory=BotOrderRegistry)
+    automatic_live_authorized: bool = False
+    last_reconcile_ok: bool = False
+    execution_fault: bool = False
 
     # churn control: last proposed limit price per symbol
     _last_price: dict[str, float] = field(default_factory=dict)
@@ -117,7 +127,10 @@ class LiveTrader:
                 log.warning("live order gate: exchange status is not freshly confirmed as running")
             return
         for order in plog.approved:
-            if self.cfg.dry_run or self.cfg.kill_switch:
+            # CLI live flags are only the outer opt-in. Even then, this process submits
+            # only after the in-process transition controller reports every gate green.
+            auto_gate_closed = not self.automatic_live_authorized
+            if self.cfg.dry_run or self.cfg.kill_switch or auto_gate_closed:
                 self.n_dry_run += 1
                 log.info(
                     "DRY-RUN would submit: %s %s x%d @ %s",
@@ -127,14 +140,36 @@ class LiveTrader:
                     order.price,
                 )
                 continue
+            intent_id: str | None = None
             try:
+                intent_id = self.order_registry.begin_submission(order)
                 ack = await self.client.place_order(order)
+                self.order_registry.record_ack(intent_id, ack)
+                if ack.status and ack.status.lower() in {"rejected", "error", "failed"}:
+                    self.execution_fault = True
+                    self.automatic_live_authorized = False
+                    self.engage_kill_switch()
+                    log.error("exchange returned a non-success order status for %s", order.symbol)
+                    continue
                 self.n_submitted += 1
                 if ack.order_id:
                     self._submitted_order_ids.add(ack.order_id)
                 log.info("SUBMITTED %s -> order_id=%s status=%s", order.symbol, ack.order_id, ack.status)
-            except ExchangeError as exc:
-                log.warning("order rejected by exchange: %s (%s)", order.symbol, exc)
+            except Exception as exc:  # noqa: BLE001 - preserve runner; ambiguous writes fail closed
+                # A 4xx response is a definite rejection; a 5xx or transport failure may
+                # follow an accepted write and stays unresolved for restart reconciliation.
+                if intent_id is not None:
+                    try:
+                        self.order_registry.record_failure(
+                            intent_id,
+                            definite_rejection=isinstance(exc, ExchangeError) and 400 <= exc.status < 500,
+                        )
+                    except Exception:  # noqa: BLE001 - preserve the original unresolved intent
+                        pass
+                self.execution_fault = True
+                self.automatic_live_authorized = False
+                self.engage_kill_switch()
+                log.error("order execution failed for %s (%s)", order.symbol, type(exc).__name__)
 
     async def step(self) -> ProposalLog:
         plog = self.propose()
@@ -149,19 +184,70 @@ class LiveTrader:
             self.state.reconcile_positions(positions)
             orders = await self.client.get_open_orders()
             self.state.reconcile_open_orders(orders)
+            owned_ok = self.order_registry.reconcile(orders)
+            self.last_reconcile_ok = owned_ok
+            if owned_ok:
+                self._submitted_order_ids.update(self.order_registry.known_open_ids())
+            else:
+                log.error("order ownership reconciliation incomplete; unknown orders will not be cancelled")
             log.info("reconciled: %d positions, %d open orders", len(positions), len(orders))
-        except ExchangeError as exc:
+        except (ExchangeError, OrderRegistryError) as exc:
+            self.last_reconcile_ok = False
             log.warning("reconcile failed: %s", exc)
+
+    async def enforce_session_loss(self, tracker: SessionPnLTracker) -> bool:
+        """Latch the hard stop and cancel only IDs recorded from our own order ACKs.
+
+        Incomplete PnL input blocks automatic execution but is not interpreted as zero loss.
+        This method never liquidates positions and never cancels unregistered orders.
+        """
+        if not tracker.loss_limit_reached:
+            return False
+        self.engage_kill_switch()
+        for order_id in tuple(self._submitted_order_ids):
+            if order_id not in self.order_registry.orders:
+                continue
+            try:
+                await self.client.cancel_order(order_id)
+                self.order_registry.record_cancel(order_id, confirmed=True)
+                self._submitted_order_ids.discard(order_id)
+                log.warning("loss stop cancelled bot-owned order %s", order_id)
+            except Exception as exc:  # noqa: BLE001 - continue monitoring after cancellation faults
+                log.error(
+                    "loss stop could not confirm cancellation for bot order %s (%s)",
+                    order_id,
+                    type(exc).__name__,
+                )
+        return True
+
+    def authorize_resume_after_loss(
+        self,
+        tracker: SessionPnLTracker,
+        transition: AutomaticTransition,
+        *,
+        manual_authorization: bool,
+    ) -> None:
+        """Resume only after an explicit operator action and a fresh PnL snapshot."""
+        if not manual_authorization:
+            raise PermissionError("manual authorization is required after a loss-limit stop")
+        tracker.authorize_resume(manual_authorization=True)
+        transition.authorize_resume(manual_authorization=True)
+        self.cfg.kill_switch = False
+        self.risk.kill_switch = False
+        self.automatic_live_authorized = False
+        log.warning("manual resume accepted; returning to dry-run rollout checks")
 
     async def shutdown(self, cancel_orders: bool = True) -> None:
         """Safe shutdown: optionally cancel all resting orders (never in dry-run)."""
-        if cancel_orders and not (self.cfg.dry_run or self.cfg.kill_switch):
+        if cancel_orders and not self.cfg.dry_run:
             for order_id in tuple(self._submitted_order_ids):
                 try:
                     await self.client.cancel_order(order_id)
+                    if order_id in self.order_registry.orders:
+                        self.order_registry.record_cancel(order_id, confirmed=True)
                     log.info("cancelled bot-owned order %s on shutdown", order_id)
-                except ExchangeError as exc:
-                    log.warning("cancel of bot-owned order %s failed: %s", order_id, exc)
+                except Exception as exc:  # noqa: BLE001 - keep safe shutdown progressing
+                    log.warning("cancel of bot-owned order %s failed (%s)", order_id, type(exc).__name__)
         else:
             log.info("shutdown: dry_run/kill_switch -> no cancels sent")
 
@@ -176,5 +262,7 @@ class LiveTrader:
             "kill_switch": self.cfg.kill_switch,
             "submitted": self.n_submitted,
             "dry_run_decisions": self.n_dry_run,
+            "automatic_live_authorized": self.automatic_live_authorized,
+            "execution_fault": self.execution_fault,
             **self.state.summary(),
         }

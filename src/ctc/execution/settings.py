@@ -15,6 +15,7 @@ Safety defaults:
 
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -86,6 +87,38 @@ class LiveConfig:
     max_orders_per_min: int = 50  # below the exchange's 60/bot to keep headroom
     min_reprice_edge: float = 0.02  # don't resubmit unless the target moved by this ($)
     stale_after_s: float = 10.0  # reject trading on quotes older than this (seconds)
+    max_session_loss: float = 10_000.0
+    max_initial_gross_exposure: float = 10_000.0
+    initial_max_order_size_frac: float = 0.01
+    initial_orders_per_min: int = 5
+    initial_max_order_size_units: int = 1
+    automatic_transition_enabled: bool = False
+    order_registry_path: str = "research/runtime/order_registry.json"
+    session_pnl_path: str = "research/runtime/session_pnl.json"
+    process_lock_path: str = "research/runtime/bot.lock"
+
+    def __post_init__(self) -> None:
+        positive = {
+            "max_order_size_frac": self.max_order_size_frac,
+            "max_gross_exposure": self.max_gross_exposure,
+            "max_session_loss": self.max_session_loss,
+            "max_initial_gross_exposure": self.max_initial_gross_exposure,
+            "initial_max_order_size_frac": self.initial_max_order_size_frac,
+            "stale_after_s": self.stale_after_s,
+        }
+        if any(not math.isfinite(value) or value <= 0 for value in positive.values()):
+            raise ValueError("risk caps and staleness limits must be positive finite numbers")
+        if self.max_orders_per_min < 1 or self.initial_orders_per_min < 1:
+            raise ValueError("order action limits must be at least one per minute")
+        if self.initial_max_order_size_units < 1:
+            raise ValueError("initial order units must be at least one")
+        # These remain absolute ceilings even if an environment override is too large.
+        self.max_order_size_frac = min(self.max_order_size_frac, 0.25)
+        self.max_gross_exposure = min(self.max_gross_exposure, 2_000_000.0)
+        self.max_orders_per_min = min(self.max_orders_per_min, 50)
+        self.max_initial_gross_exposure = min(self.max_initial_gross_exposure, self.max_gross_exposure)
+        self.initial_max_order_size_frac = min(self.initial_max_order_size_frac, self.max_order_size_frac)
+        self.initial_orders_per_min = min(self.initial_orders_per_min, self.max_orders_per_min)
 
     # Connection
     ws_max_backoff_s: float = 30.0
@@ -111,6 +144,17 @@ class LiveConfig:
             max_orders_per_min=_env_int("CTC_MAX_ORDERS_PER_MIN", 50),
             min_reprice_edge=_env_float("CTC_MIN_REPRICE_EDGE", 0.02),
             stale_after_s=_env_float("CTC_STALE_AFTER_S", 10.0),
+            max_session_loss=_env_float("CTC_MAX_SESSION_LOSS", 10_000.0),
+            max_initial_gross_exposure=_env_float("CTC_INITIAL_MAX_GROSS_EXPOSURE", 10_000.0),
+            initial_max_order_size_frac=_env_float("CTC_INITIAL_MAX_ORDER_SIZE_FRAC", 0.01),
+            initial_orders_per_min=_env_int("CTC_INITIAL_ORDERS_PER_MIN", 5),
+            initial_max_order_size_units=_env_int("CTC_INITIAL_MAX_ORDER_UNITS", 1),
+            automatic_transition_enabled=_env_bool("CTC_AUTO_TRANSITION", False),
+            order_registry_path=os.environ.get(
+                "CTC_ORDER_REGISTRY_PATH", "research/runtime/order_registry.json"
+            ),
+            session_pnl_path=os.environ.get("CTC_SESSION_PNL_PATH", "research/runtime/session_pnl.json"),
+            process_lock_path=os.environ.get("CTC_PROCESS_LOCK_PATH", "research/runtime/bot.lock"),
         )
 
     def has_key(self) -> bool:
@@ -130,6 +174,13 @@ class LiveConfig:
             "max_gross_exposure": self.max_gross_exposure,
             "max_orders_per_min": self.max_orders_per_min,
             "stale_after_s": self.stale_after_s,
+            "max_session_loss": self.max_session_loss,
+            "max_initial_gross_exposure": self.max_initial_gross_exposure,
+            "initial_max_order_size_frac": self.initial_max_order_size_frac,
+            "initial_orders_per_min": self.initial_orders_per_min,
+            "initial_max_order_size_units": self.initial_max_order_size_units,
+            "automatic_transition_enabled": self.automatic_transition_enabled,
+            "process_lock_path": self.process_lock_path,
         }
 
     # never leak the key via repr

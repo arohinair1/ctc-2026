@@ -38,6 +38,49 @@ def test_env_overrides(monkeypatch):
     assert cfg.has_key()
 
 
+def test_rollout_configuration_is_conservative_and_disabled_by_default(monkeypatch):
+    for key in (
+        "CTC_AUTO_TRANSITION",
+        "CTC_MAX_SESSION_LOSS",
+        "CTC_INITIAL_MAX_GROSS_EXPOSURE",
+        "CTC_INITIAL_MAX_ORDER_SIZE_FRAC",
+        "CTC_INITIAL_ORDERS_PER_MIN",
+        "CTC_INITIAL_MAX_ORDER_UNITS",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    cfg = LiveConfig.from_env(load_env_file=False)
+    assert cfg.automatic_transition_enabled is False
+    assert cfg.max_session_loss == 10_000
+    assert cfg.max_initial_gross_exposure == 10_000
+    assert cfg.initial_max_order_size_frac == 0.01
+    assert cfg.initial_orders_per_min == 5
+    assert cfg.initial_max_order_size_units == 1
+
+
+def test_config_never_allows_upper_bounds_above_competition_limits():
+    cfg = LiveConfig(
+        max_order_size_frac=0.9,
+        max_gross_exposure=9_000_000,
+        max_orders_per_min=500,
+        max_initial_gross_exposure=4_000_000,
+        initial_max_order_size_frac=0.5,
+        initial_orders_per_min=100,
+    )
+    assert cfg.max_order_size_frac == 0.25
+    assert cfg.max_gross_exposure == 2_000_000
+    assert cfg.max_orders_per_min == 50
+    assert cfg.max_initial_gross_exposure == 2_000_000
+    assert cfg.initial_max_order_size_frac == 0.25
+    assert cfg.initial_orders_per_min == 50
+
+
+def test_config_rejects_invalid_loss_limit():
+    import pytest
+
+    with pytest.raises(ValueError, match="positive finite"):
+        LiveConfig(max_session_loss=0)
+
+
 def test_redacted_masks_key():
     cfg = LiveConfig(api_key="ABCDEFGHIJ")
     red = cfg.redacted()

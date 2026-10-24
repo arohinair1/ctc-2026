@@ -108,7 +108,10 @@ class ExchangeClient:
         self._transport = transport or urllib_transport
         self._ws_connect = ws_connect
         self._clock = clock
-        self.order_limiter = RateLimiter(config.max_orders_per_min, 60.0, clock)
+        action_limit = min(config.max_orders_per_min, config.initial_orders_per_min)
+        if not config.automatic_transition_enabled:
+            action_limit = config.max_orders_per_min
+        self.order_limiter = RateLimiter(action_limit, 60.0, clock)
 
     # ---- headers -------------------------------------------------------
     def _headers(self, json_body: bool = False) -> dict[str, str]:

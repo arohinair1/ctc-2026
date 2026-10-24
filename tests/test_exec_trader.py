@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
+from ctc.execution.automation import SessionPnLTracker
 from ctc.execution.models import Frame, OrderAck
 from ctc.execution.risk import RiskManager
 from ctc.execution.settings import LiveConfig
@@ -85,9 +86,43 @@ def test_live_mode_submits():
     state = _overpriced_state()
     state.update_exchange_status({"competition_id": "test", "state": "running"})
     trader, _ = _trader(state, dry_run=False)
+    trader.automatic_live_authorized = True  # stand-in for all rollout gates passing
     asyncio.run(trader.step())
     assert len(trader.client.placed) >= 1
     assert trader.n_submitted >= 1
+
+
+def test_live_mode_stays_gated_without_transition_authorization():
+    state = _overpriced_state()
+    state.update_exchange_status({"competition_id": "test", "state": "running"})
+    trader, cfg = _trader(state, dry_run=False)
+    cfg.automatic_transition_enabled = True
+    asyncio.run(trader.step())
+    assert trader.client.placed == []
+    assert trader.n_dry_run >= 1
+
+
+def test_session_loss_latches_and_cancels_only_registered_bot_orders(tmp_path):
+    state = _overpriced_state()
+    state.update_exchange_status({"competition_id": "test", "state": "running"})
+    trader, _ = _trader(state, dry_run=False)
+    trader.automatic_live_authorized = True
+    asyncio.run(trader.step())
+    assert trader.client.placed
+    tracker = SessionPnLTracker(tmp_path / "pnl.json", clock=lambda: 10)
+    tracker.update(starting_equity=100_000, realized_pnl=0, unrealized_pnl=0, source_verified=True)
+    tracker.update(
+        starting_equity=100_000,
+        realized_pnl=-10_000,
+        unrealized_pnl=0,
+        source_verified=True,
+    )
+
+    assert asyncio.run(trader.enforce_session_loss(tracker))
+    assert trader.cfg.kill_switch and trader.risk.kill_switch
+    assert trader.client.cancelled_ids == ["id1"]
+    # The loss stop cancels bot orders; it does not submit an offsetting liquidation.
+    assert len(trader.client.placed) == 1
 
 
 def test_kill_switch_blocks_submission():
@@ -120,6 +155,16 @@ def test_shutdown_cancels_only_when_live():
     asyncio.run(trader2.shutdown())
     assert trader2.client.cancelled == 1
     assert trader2.client.cancelled_ids == ["bot-order"]
+
+
+def test_shutdown_still_cancels_bot_orders_when_kill_switch_is_engaged():
+    state = _overpriced_state()
+    state.update_exchange_status({"competition_id": "test", "state": "running"})
+    trader, _ = _trader(state, dry_run=False)
+    trader._submitted_order_ids.add("bot-order")
+    trader.engage_kill_switch()
+    asyncio.run(trader.shutdown())
+    assert trader.client.cancelled_ids == ["bot-order"]
 
 
 def test_live_submission_requires_fresh_running_state():

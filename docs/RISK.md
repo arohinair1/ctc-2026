@@ -5,10 +5,11 @@ lists the controls, their defaults, and how to operate the safety switches.
 
 ## Layers (in order)
 
-1. **Dry-run gate (default ON).** `CTC_DRY_RUN=true` by default. The bot computes and logs
-   every decision but `LiveTrader.execute()` never calls a write endpoint. Going live needs
-   **both** `CTC_DRY_RUN=false` and the `ctc-bot --live` flag; otherwise the bot refuses to
-   start.
+1. **Dry-run gate (default ON).** `CTC_DRY_RUN=true` by default. `ctc-bot --live` now also
+   requires `CTC_DRY_RUN=false` and `CTC_AUTO_TRANSITION=true`. Even with all three set,
+   `LiveTrader.execute()` stays in dry-run until the in-process transition reaches `LIVE`.
+   The rollout starts with a 1% per-order position-limit cap, $10,000 gross exposure, and
+   five actions per minute; the 25%, $2,000,000 and 50/min settings remain hard upper bounds.
 2. **Kill switch.** `CTC_KILL_SWITCH=true` (or `trader.engage_kill_switch()`) makes the
    `RiskManager` reject every candidate, so nothing is proposed or submitted even in live
    mode. On shutdown, resting orders are cancelled (live mode only).
@@ -30,6 +31,16 @@ lists the controls, their defaults, and how to operate the safety switches.
 6. **Strategy-level gate.** `decide_live` only trades when the edge exceeds a cushion **plus**
    `uncertainty_k` × the fair-value 1-sigma, so the bot trades mainly when it genuinely knows
    more than the house (e.g. just after a damage report).
+7. **Session loss stop.** `CTC_MAX_SESSION_LOSS` defaults to $10,000. A complete, fresh,
+   verified session equity snapshot is required. Realized and unrealized PnL are measured
+   relative to the opening snapshot. At the threshold, the bot latches its kill switch and
+   cancels only order IDs in its persistent registry; it never liquidates positions. Resume
+   requires explicit manual authorization.
+8. **Persistent ownership and transition.** Submission intent is saved before POST, ACKed
+   exchange IDs and execution records are stored atomically under `research/runtime/`, and
+   restart always requires reconciliation. Unknown orders, ambiguous submissions, missing
+   executions, incomplete PnL, stale quotes, or an unverified PORT test prevent LIVE.
+   HALTED / SAFE_MODE requires manual authorization to reset.
 
 ## Defaults
 
@@ -42,6 +53,14 @@ lists the controls, their defaults, and how to operate the safety switches.
 | `CTC_MAX_ORDERS_PER_MIN` | `50` | order-action rate cap (exchange ceiling 60) |
 | `CTC_MIN_REPRICE_EDGE` | `0.02` | min price move to re-quote ($) |
 | `CTC_STALE_AFTER_S` | `10` | reject trading on quotes older than this |
+| `CTC_MAX_SESSION_LOSS` | `10000` | hard session loss stop ($) |
+| `CTC_INITIAL_MAX_GROSS_EXPOSURE` | `10000` | initial rollout gross cap ($) |
+| `CTC_INITIAL_MAX_ORDER_SIZE_FRAC` | `0.01` | initial per-order fraction of position limit |
+| `CTC_INITIAL_MAX_ORDER_UNITS` | `1` | absolute initial per-order quantity ceiling |
+| `CTC_INITIAL_ORDERS_PER_MIN` | `5` | initial order-action cap |
+| `CTC_AUTO_TRANSITION` | `false` | require the staged rollout controller for any CLI live session |
+| `CTC_ORDER_REGISTRY_PATH` | `research/runtime/order_registry.json` | persistent bot order ownership ledger |
+| `CTC_SESSION_PNL_PATH` | `research/runtime/session_pnl.json` | persistent PnL baseline and loss latch |
 
 ## Credential handling
 
@@ -68,3 +87,16 @@ unset CTC_DRY_RUN                    # or set CTC_DRY_RUN=true
 Placing, cancelling, or modifying real orders; creating/redeeming ETFs; any other
 state-changing exchange call. The first such action is the single place+cancel test in
 [TESTNET.md](TESTNET.md), and only after a human approves that specific test.
+
+## Current live-gate limitations
+
+The case packet and starter-kit client currently establish `/positions`, `/orders/open`,
+order POST/DELETE and market-data frames. They do **not** document a starting-equity or
+realized-fills endpoint, fill execution IDs/prices in a complete history, or an owner field
+on open orders. The market trade tape cannot prove which team filled an order. Therefore the
+live runner has no verified provider for `SessionPnLTracker.update()` or complete fill
+accounting yet; missing input keeps `pnl_complete=false`. The registry can prove ownership
+of orders created by this process from their acknowledged exchange IDs, but cannot claim
+ownership of legacy/manual/team orders. Do not arm live mode until the organizers document
+the missing account/execution semantics and a controlled live verification establishes
+them.

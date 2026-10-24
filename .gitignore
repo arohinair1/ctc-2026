@@ -10,6 +10,7 @@ research/results/figures/
 
 # Feed recordings (can be large; keep out of git)
 research/recordings/
+research/runtime/
 *.jsonl
 !data/raw/**/*.jsonl
 

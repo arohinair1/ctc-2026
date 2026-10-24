@@ -6,6 +6,12 @@
 > local `.env` overrides must also be updated. Authenticated feed/order behavior
 > remains unverified by this agent. See [quote-aware review](docs/QUOTE_AWARE_REVIEW.md).
 
+> Update, 2026-10-24: rollout safety infrastructure now includes the persistent order
+> registry, session PnL tracker, and gated transition controller. Live activation remains
+> disabled because the official interfaces do not yet provide verified equity/fills
+> accounting. The PORT test is authorized only conditionally on executable quotes and has
+> not been run. Current full-suite baseline: 173 tests.
+
 
 Guide for AI/human agents continuing the CTC 2026 systematic-equities bot. Read this plus
 [docs/HANDOFF.md](docs/HANDOFF.md) before making changes.
@@ -15,11 +21,12 @@ Guide for AI/human agents continuing the CTC 2026 systematic-equities bot. Read 
 1. **Never expose the bot key.** `CTC_API_KEY` lives only in `.env` (gitignored, mode 600).
    Never print, log, commit, or paste it. All tooling already redacts it; keep it that way.
 2. **Dry-run is the default and must stay so.** Do not change the default of `CTC_DRY_RUN` to
-   false. Live submission requires both `CTC_DRY_RUN=false` and `ctc-bot --live`.
+   false. Staged live submission requires `CTC_DRY_RUN=false`, `ctc-bot --live`,
+   `CTC_AUTO_TRANSITION=true`, and every controller gate to pass.
 3. **No state-changing exchange calls without explicit human approval** — no placing/
-   cancelling orders, no ETF create/redeem. The one approved-in-advance *plan* (not yet run)
-   is the 1-lot PORT place+cancel in [docs/TESTNET.md](docs/TESTNET.md); it still needs a
-   human "go".
+   cancelling orders, no ETF create/redeem. The only conditionally authorized test is the
+   one-lot PORT place+cancel in [docs/TESTNET.md](docs/TESTNET.md), and it must not be run
+   without executable quotes; no broader live trading is authorized by that test.
 4. **Do not invent endpoints, message shapes, exchange rules, or results.** Use the case
    packet (`docs/*.pdf`) and starter kit (`data/raw/.../starter_kit/`) as source of truth.
    Record real probe/test results honestly, including failures.
@@ -43,7 +50,7 @@ off packaged model artifacts (`src/ctc/models/*.json`); data-backed tests auto-s
 ```bash
 ruff format src tests
 ruff check src tests          # must pass (line length 110)
-pytest -q                     # 135 tests must pass (plus 17 separate quote-aware checks)
+pytest -q                     # 173 tests must pass (plus 17 separate quote-aware checks)
 ```
 
 CI (`.github/workflows/ci.yml`) runs lint + format + pytest on 3.10–3.13.
@@ -71,12 +78,11 @@ CI (`.github/workflows/ci.yml`) runs lint + format + pytest on 3.10–3.13.
 
 ## Current status (keep this honest)
 
-Research done; live stack built and tested (135 tests). Record→replay→dry-run round-trip
+Research done; live stack and staged rollout controls built and tested (173 tests). Record→replay→dry-run round-trip
 verified offline. Corrected host `https://cornelltradingcompetition.org` accepts read-only
-REST auth; one dry-run bot process has an established exchange TLS socket. Latest competition
-state was `ready`, with flat positions and an empty PORT book. Do not open a duplicate WS
-client. The quote-aware teammate candidate is research-only and is not the strategy loaded by
-`ctc-bot`; compare it with the baseline under a common evaluation before promotion. Next:
-verify fresh live frames when the season runs, then seek explicit approval for the documented
-place+cancel test. The already-running process still has the code loaded at its startup; a
-controlled restart is required to load local updates. See [docs/CHECKLIST.md](docs/CHECKLIST.md).
+REST auth. The latest reported competition state was `ready`, with flat positions and an empty
+PORT book. The current Codex shell could not enumerate processes (`sysmond service not found` /
+`Cannot get process list`); do not restart until the process is identified from Terminal.app.
+Live PnL remains incomplete because the official interface has no verified account-equity and
+realized-fill history source. The quote-aware teammate candidate remains research-only. See
+[docs/CHECKLIST.md](docs/CHECKLIST.md) and [docs/BOT_OPERATIONS.md](docs/BOT_OPERATIONS.md).

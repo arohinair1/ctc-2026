@@ -1,5 +1,22 @@
 # Handoff — CTC 2026 Systematic Equities
 
+> Update, 2026-10-24 — staged rollout controls added on the existing branch. Full local
+> validation passes: 173 tests, Ruff lint and Ruff format. `automation.py`
+> now contains the persistent bot-order registry, fail-closed session PnL tracker and
+> transition state machine. `ctc-bot` now records order provenance, reconciles registry IDs,
+> enforces a $10,000 configurable loss latch and keeps submissions gated until the staged
+> controller reaches `LIVE`. Automatic rollout defaults off; rollout sizing defaults to 1%
+> per order (also capped at one share/order), $10,000 gross and 5 actions/min. Unit tests
+> cover restart, ambiguity, partial fills, cancellation, missing PnL, observation timing, execution-test failure and safe-mode
+> recovery. The live exchange has not been used for writes, and the running process was not
+> restarted.
+>
+> Remaining blockers are verified account starting equity and realized fill history, a
+> documented way to distinguish team-owned orders, the actual PORT order/cancel round-trip,
+> and process-list access from the Codex shell. The registry and PnL tracker fail closed in
+> their absence; do not set `CTC_AUTO_TRANSITION=true` yet. See [BOT_OPERATIONS.md](BOT_OPERATIONS.md)
+> for observed terminal errors and the controlled deployment procedure.
+
 > Update, 2026-10-24: the team reported HTTP 200 after switching to
 > `https://cornelltradingcompetition.org`; earlier key-blocker statements below
 > refer to the old hurricane subdomain and are superseded. Defaults are fixed;
@@ -12,7 +29,8 @@
 > The local runner work subscribes to all documented feed channels and records raw events;
 > the baseline still forms signals from storm/damage inputs plus current bid/ask quotes.
 > Trades/order-book depth are retained for inspection, not yet used in signal sizing.
-> Latest local validation: 135 main-suite tests and 17 quote-aware research checks pass.
+> Previous validation before the rollout-control additions: 135 main-suite tests and 17
+> quote-aware research checks passed. Current suite has 173 tests.
 
 
 Status of the research **and live-bot** baseline on branch `feat/research-baseline`, and what
@@ -23,13 +41,14 @@ is left before and during the event. Companion docs: [ARCHITECTURE.md](ARCHITECT
 ## TL;DR for whoever resumes
 
 * Research (valuation + forecasting + backtest) is **done and verified**.
-* The **live stack is built and tested**: async exchange client (REST+WS, reconnect, rate
+* The **live stack is built and tested (173 tests)**: async exchange client (REST+WS, reconnect, rate
   limit), live state (seq dedup, season rollover, snapshot resync), risk manager, trader
-  (dry-run/kill-switch gated), recorder/replay, and probe. **131 tests pass; lint clean.**
-  Read-only REST authentication succeeds on the corrected host. One dry-run bot process is
-  connected; the competition is currently `ready`, with no active book. See [TESTNET.md](TESTNET.md).
-* **Do not place/cancel real orders without explicit human approval.** The exact first test
-  (1-lot PORT place+cancel, far from market) is written up in [TESTNET.md](TESTNET.md).
+  (dry-run/kill-switch/transition gated), recorder/replay, and probe. Ruff lint and format pass.
+  Read-only REST authentication succeeded on the corrected host. The bot was last observed
+  in dry-run; current process enumeration is blocked in the Codex shell. See [TESTNET.md](TESTNET.md).
+* **Do not place/cancel real orders without explicit human approval.** The one-lot PORT test
+  was conditionally authorized but remains unexecuted until executable quotes exist; this
+  task did not place orders. See [TESTNET.md](TESTNET.md).
 
 ## What is done
 

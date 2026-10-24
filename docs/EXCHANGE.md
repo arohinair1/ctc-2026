@@ -38,6 +38,21 @@ what is written here; update this file when a live session confirms or corrects 
 | POST | `/etf/{symbol}/create` | Create ETF units | Not yet exercised (gated) |
 | POST | `/etf/{symbol}/redeem` | Redeem ETF units | Not yet exercised (gated) |
 
+The reviewed case packet and starter-kit implementation do not document an account-equity,
+realized-fills/history, or execution-report endpoint. `/positions` currently parses quantity,
+mark and optional `unrealized_pnl`; `/orders/open` exposes resting order details and an
+optional filled quantity, but neither supplies a complete realized-PnL ledger. Public
+`trades` frames have no documented bot order ownership link. Do not use market tape or
+submitted limit prices as substitutes for execution records.
+
+`ctc.execution.automation.BotOrderRegistry` persists our own submission intent before POST,
+then ACK order IDs and explicit execution/cancellation records. On restart, every active
+registered ID must match `/orders/open`; unmatched exchange IDs and locally-active IDs
+missing from the exchange response leave ownership unresolved. A partial `filled` field
+without execution price is reconciled as quantity only and does not make PnL complete.
+`SessionPnLTracker` requires a fresh, verified starting equity plus realized and unrealized
+PnL snapshot and fails closed on missing, stale or inconsistent input.
+
 > Earlier 401 results were against the obsolete `hurricane.cornelltradingcompetition.org`
 > hostname. The organizer-confirmed host above now authenticates successfully. State-changing
 > endpoints remain gated and have not been exercised.

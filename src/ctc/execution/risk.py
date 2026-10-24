@@ -31,9 +31,13 @@ class RiskManager:
     max_order_size_frac: float = 0.25
     max_gross_exposure: float = 2_000_000.0
     kill_switch: bool = False
+    max_order_size_units: int | None = None
 
     def max_order_size(self, symbol: str) -> int:
-        return max(1, int(self.max_order_size_frac * position_limit(symbol)))
+        fractional = max(1, int(self.max_order_size_frac * position_limit(symbol)))
+        if self.max_order_size_units is not None:
+            return min(fractional, max(1, self.max_order_size_units))
+        return fractional
 
     def evaluate(
         self,

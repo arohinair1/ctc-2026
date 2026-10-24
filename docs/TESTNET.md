@@ -58,11 +58,11 @@ provided running-session context says it subscribed to `news` and `quotes`; fres
 logs/frame counts could not be read from this shell. Since competition state is `ready` and
 the PORT book is empty, there is no live book or active season to trade against yet.
 
-## First state-changing test — PROPOSED, AWAITING APPROVAL
+## First state-changing test — AUTHORIZED IN CHAT, NOT EXECUTED
 
-> **Not yet executed.** No order has been placed or cancelled. This is the precise plan to
-> run once (a) the auth probe is green and (b) a human explicitly approves *this specific
-> test*.
+> **Not yet executed.** No order has been placed or cancelled. The user authorized this
+> single PORT place+cancel test conditional on executable quotes. This is not general order
+> authorization. Do not run while the exchange is `ready` or the PORT book is empty.
 
 Goal: place **one** tiny, far-from-market limit order and immediately cancel it, to confirm
 the order/cancel round-trip and our parsing — with effectively zero fill risk.
@@ -88,7 +88,7 @@ from ctc.execution.client import ExchangeClient; c=ExchangeClient(LiveConfig.fro
 print(json.dumps(asyncio.run(c.get_orderbook('PORT')).__dict__, default=str))"
 
 # 3) THE TEST — place 1 far-below-market buy, then cancel it.
-#    Only after a human says "approved: run the PORT place+cancel test".
+#    Existing authorization applies only to this one-lot test, after live quotes exist.
 #    Set <PX> to roughly half of the best bid printed above.
 python - <<'PY'
 import asyncio
@@ -121,7 +121,9 @@ response here before any further live action.
 
 ## After the single order test passes
 
-Only then, and with separate approval, proceed to: subscribe to `news`+`quotes`, run
-`ctc-bot` in dry-run against the live feed for a full season, verify reconnect across a
-season rollover, then consider enabling live sizing. See
+Only after the round-trip is verified should the staged controller advance beyond
+`EXECUTION_TEST`. The one-lot test has not been run; the exchange was last reported `ready`
+with no executable PORT quotes. Automatic transition infrastructure is implemented but
+must not be enabled for live trading until reliable account equity/PnL and order ownership
+semantics are verified against the exchange. See [RISK.md](RISK.md) and
 [BOT_OPERATIONS.md](BOT_OPERATIONS.md).

@@ -52,6 +52,7 @@ backtest.
 | `client.py` | `ExchangeClient` (async REST+WS), `RateLimiter`, `ExchangeError`, read-only `probe()` |
 | `state.py` | `LiveState`: market/season state, seq dedup, season rollover, snapshot resync, feeds the estimator |
 | `risk.py` | `RiskManager`: pure, synchronous pre-trade checks |
+| `automation.py` | Persistent order provenance, session PnL tracking, staged live-transition state machine |
 | `trader.py` | `LiveTrader`: orchestrates state→forecast→strategy→risk→execution; dry-run/kill-switch gate |
 | `recorder.py` | Feed recording (JSONL) + `iter_recorded_frames` replay + `recording_gaps` |
 | `runner.py` | Entry points: `ctc-bot`, `ctc-bot-probe`, `ctc-bot-replay` |
@@ -75,8 +76,18 @@ backtest.
 * **Decision stage is pure.** `LiveTrader.propose()` does no I/O and returns a `ProposalLog`
   (approved + rejected with reasons), making it fully unit-testable and safe to inspect in
   dry-run.
-* **Single execution chokepoint.** Only `LiveTrader.execute()` touches write endpoints, and
-  it is hard-gated by `dry_run`/`kill_switch`.
+* **Single execution chokepoint.** Only `LiveTrader.execute()` touches write endpoints. In
+  automatic transition mode, CLI flags do not suffice: the controller must reach `LIVE`.
+* **Restart-safe ownership.** A persisted intent precedes each POST. ACKed order IDs,
+  execution records and cancellation confirmations are stored atomically. Restart requires
+  reconciliation; unknown IDs remain unresolved and are never cancelled by this bot.
+* **Singleton runner.** A POSIX advisory lock is acquired before opening exchange
+  connections. It prevents concurrent updated instances; a legacy process that predates the
+  lock must still be identified separately during a controlled restart.
+* **Fail-closed rollout.** `AutomaticTransition` observes all 12 fresh symbols for 30 real
+  seconds, then waits for an externally verified one-lot test and all execution, accounting,
+  risk, ownership and process checks. Auto activation defaults off. No documented account
+  equity/fills source exists yet, so production accounting remains incomplete and blocks LIVE.
 * **Testability.** HTTP goes through an injectable sync `transport`; the WS through an
   injectable `ws_connect`. Tests pass fakes and never hit the network (see
   `tests/test_exec_*.py`).

@@ -253,3 +253,17 @@ def test_armed_rollout_uses_smaller_initial_caps(tmp_path):
     assert trader.risk.max_gross_exposure == 10_000
     assert trader.risk.max_order_size("PORT") == 1
     assert client.order_limiter.max_events == 5
+
+
+def test_unarmed_startup_still_enforces_initial_caps(tmp_path):
+    cfg = LiveConfig(
+        dry_run=True,
+        automatic_transition_enabled=False,
+        order_registry_path=str(tmp_path / "registry.json"),
+    )
+    client = ExchangeClient(cfg, transport=lambda *_args: (200, "{}"))
+    trader = _build_trader(cfg, client)
+    assert trader.risk.max_order_size_frac == 0.01
+    assert trader.risk.max_gross_exposure == 10_000
+    assert trader.risk.max_order_size("PORT") == 1
+    assert client.order_limiter.max_events == 5

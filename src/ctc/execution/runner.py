@@ -48,13 +48,13 @@ log = get_logger("runner")
 def _build_trader(cfg: LiveConfig, client: ExchangeClient) -> LiveTrader:
     estimator = build_live_estimator()
     state = LiveState(estimator)
-    order_frac = cfg.max_order_size_frac
-    gross_cap = cfg.max_gross_exposure
-    if cfg.automatic_transition_enabled:
-        order_frac = min(order_frac, cfg.initial_max_order_size_frac)
-        gross_cap = min(gross_cap, cfg.max_initial_gross_exposure)
-    initial_order_units = cfg.initial_max_order_size_units if cfg.automatic_transition_enabled else None
-    risk = RiskManager(order_frac, gross_cap, cfg.kill_switch, initial_order_units)
+    # The configured initial limits are hard ceilings until they are deliberately
+    # changed after execution quality is established. They must not depend on whether
+    # the automatic transition controller is armed: dry-run and unarmed startup should
+    # never generate deceptively oversized proposals.
+    order_frac = min(cfg.max_order_size_frac, cfg.initial_max_order_size_frac)
+    gross_cap = min(cfg.max_gross_exposure, cfg.max_initial_gross_exposure)
+    risk = RiskManager(order_frac, gross_cap, cfg.kill_switch, cfg.initial_max_order_size_units)
     registry = BotOrderRegistry(cfg.order_registry_path)
     return LiveTrader(client, state, risk, cfg, order_registry=registry)
 

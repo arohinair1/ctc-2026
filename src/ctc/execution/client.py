@@ -108,9 +108,9 @@ class ExchangeClient:
         self._transport = transport or urllib_transport
         self._ws_connect = ws_connect
         self._clock = clock
+        # Keep the rollout action limit in force even while transition is unarmed.
+        # Arming controls eligibility; it must not silently widen the risk envelope.
         action_limit = min(config.max_orders_per_min, config.initial_orders_per_min)
-        if not config.automatic_transition_enabled:
-            action_limit = config.max_orders_per_min
         self.order_limiter = RateLimiter(action_limit, 60.0, clock)
 
     # ---- headers -------------------------------------------------------

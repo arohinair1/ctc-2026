@@ -1,5 +1,12 @@
 # Pre-Event Checklist
 
+> Update, 2026-10-24: the team reported HTTP 200 after switching to
+> `https://cornelltradingcompetition.org`; earlier key-blocker statements below
+> refer to the old hurricane subdomain and are superseded. Defaults are fixed;
+> local `.env` overrides must also be updated. Authenticated feed/order behavior
+> remains unverified by this agent. See [quote-aware review](QUOTE_AWARE_REVIEW.md).
+
+
 Official "Before the event" checklist (systematic-equities case packet) with current status.
 Legend: ✅ verified · 🟡 implemented or connected, pending live validation · ⛔ blocked/needs human.
 

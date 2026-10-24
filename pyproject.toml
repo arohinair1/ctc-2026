@@ -54,6 +54,8 @@ testpaths = ["tests"]
 addopts = "-q"
 
 [tool.ruff]
+# Standalone imported research scripts have a separate runtime and test suite.
+extend-exclude = ["research/quote_aware"]
 line-length = 110
 target-version = "py310"
 

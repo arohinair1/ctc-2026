@@ -1,5 +1,12 @@
 # Handoff — CTC 2026 Systematic Equities
 
+> Update, 2026-10-24: the team reported HTTP 200 after switching to
+> `https://cornelltradingcompetition.org`; earlier key-blocker statements below
+> refer to the old hurricane subdomain and are superseded. Defaults are fixed;
+> local `.env` overrides must also be updated. Authenticated feed/order behavior
+> remains unverified by this agent. See [quote-aware review](QUOTE_AWARE_REVIEW.md).
+
+
 Status of the research **and live-bot** baseline on branch `feat/research-baseline`, and what
 is left before and during the event. Companion docs: [ARCHITECTURE.md](ARCHITECTURE.md),
 [EXCHANGE.md](EXCHANGE.md), [BOT_OPERATIONS.md](BOT_OPERATIONS.md), [RISK.md](RISK.md),

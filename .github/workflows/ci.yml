@@ -47,3 +47,15 @@ jobs:
         # The multi-GB research dataset is not committed, so data-backed integration
         # tests skip automatically (see tests/conftest.py::requires_data).
         run: pytest -q
+
+  quote-aware:
+    name: Quote-aware offline tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r research/quote_aware/requirements.txt
+      - run: python -m unittest -v test_core
+        working-directory: research/quote_aware

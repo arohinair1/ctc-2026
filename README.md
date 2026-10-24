@@ -12,6 +12,16 @@ season. This repo finds those values before the market does and trades on them.
   [testnet & first order](docs/TESTNET.md) · [pre-event checklist](docs/CHECKLIST.md)
 - **Case packets:** `docs/*.pdf`
 
+## Quote-aware research candidate
+
+Additional model, calibration, season-level results, replay and tests are in
+[research/quote_aware](research/quote_aware/README.md). Read the
+[integration review](docs/QUOTE_AWARE_REVIEW.md) before comparing results or
+changing the live strategy. The default live model is unchanged.
+
+The corrected exchange host is `https://cornelltradingcompetition.org`. If your
+local `.env` sets `CTC_HTTP_URL`, update that override as well.
+
 ## Quick start
 
 ```bash

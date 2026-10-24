@@ -1,5 +1,12 @@
 # Exchange Protocol Notes
 
+> Update, 2026-10-24: the team reported HTTP 200 after switching to
+> `https://cornelltradingcompetition.org`; earlier key-blocker statements below
+> refer to the old hurricane subdomain and are superseded. Defaults are fixed;
+> local `.env` overrides must also be updated. Authenticated feed/order behavior
+> remains unverified by this agent. See [quote-aware review](QUOTE_AWARE_REVIEW.md).
+
+
 What the client implements against the Archipelago Exchange, and — importantly — which parts
 are **confirmed** from the case packet / starter kit versus **assumed** (tolerant parsing)
 and must be verified against a live feed. Do not invent endpoints or message shapes beyond

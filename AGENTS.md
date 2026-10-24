@@ -1,5 +1,12 @@
 # AGENTS.md — working in this repo
 
+> Update, 2026-10-24: the team reported HTTP 200 after switching to
+> `https://cornelltradingcompetition.org`; earlier key-blocker statements below
+> refer to the old hurricane subdomain and are superseded. Defaults are fixed;
+> local `.env` overrides must also be updated. Authenticated feed/order behavior
+> remains unverified by this agent. See [quote-aware review](docs/QUOTE_AWARE_REVIEW.md).
+
+
 Guide for AI/human agents continuing the CTC 2026 systematic-equities bot. Read this plus
 [docs/HANDOFF.md](docs/HANDOFF.md) before making changes.
 

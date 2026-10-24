@@ -1,0 +1,28 @@
+{
+  "status": "offline research; standalone execution disabled",
+  "files": {
+    "README.md": "2c6a1be6c97d72a98177a56afb98383317c4b415112f7bda6855ac2922fa0124",
+    "PLAYBOOK.md": "57e5369dd909563cc77c117a1c7a55413ea4c414f7340ef4c7e9890b95968f2d",
+    "calibration.json": "60151f500c0b37e9b8d3704da749b4229e95c8e593ce78b8e21ee5861194627e",
+    "refine.py": "5576620146e75cba7f59bcfec3e057c1cdc706ea690ca837b21be47473417297",
+    "replay.py": "1ffe2b2a64b38655d897d22005bc9f3d06393da3e69070de7eb614cb60651777",
+    "test_core.py": "066251bec64481faf87d4fba9e0060f9e4e511c8377bfba6c1fc2513bf610b82",
+    "control.json": "e7e2961a343210ecd50c93c355bdedc439000e717aad527aefa52e689476164a",
+    "replay_example.csv": "7e87b76a3832170418951780e262142321fadfd0c870e4a86a6ee2af86bb7179",
+    "case.json": "bcd0eb79c5a89b6625c17f2c233a686a04fafc75093e8a57d3c90f3b09972839",
+    "recover_parameters.py": "ef735061eb24ca01145ca403120e6a08b1301cf2ff862112994d164283285c35",
+    "model.joblib": "c76a5e13a09224c4ec3d362aad170b6462ec5e31033fc4b3c282688d83c79f30",
+    "research_results.json": "c6e40f2f63688f8f38ecd2ec7bbcea628c85bfdf55a2dd61320d2fdec7e001ca",
+    "bot.py": "57ef99c48fa8d5c6c67a583524cceeb663799e66b16ab64809cc3d28b7151624",
+    "requirements.txt": "daf30e72e37a18d5956f7b20d5a2a227638268298ac2911c9ad2e4fae42e58f8",
+    "research.py": "85e8f802e6ca4724913c0eab2a23343372a28fe8d13c4ab5b40c0c617a8dbb5a",
+    "inspect_exchange.py": "f83618abfbb9b7a2514bd8279943e32b8aa0f09f412ad8bb28b2b7d55b27965f",
+    "evaluation_seasons.csv": "54ad044d6d2d750884bb62f94d95a31c030bdd57f2799faed951926b708333f4",
+    "core.py": "cd58b8d2109be6bb29739a8285cf82751e4cc9488f9ddf0c55af8ad87de595ad",
+    "auth_diagnostics/auth_check.py": "62ffa8f5224b7be90337099bbb038ccc69f8dd59f4764b85011135cc577f19a4",
+    "reference/README.md": "e103974c6913deddf2c7caff1bece6f7881b9dc716ef5da3e28869e0d92d0754",
+    "reference/check_recording.py": "150db6e0c24f944ddd24945d8d6c5373efd50e8eaeb647890ca67572d4ed4424",
+    "reference/record_feed.py": "7049c09954e3cfbe58a82c18e076bb4bc680670c04ec94691fa2286fba013b8a",
+    "reference/history.py": "c9a93c117e4df869a4e8a34b03f0b656ada231bdf41864778d536ce129b91521"
+  }
+}

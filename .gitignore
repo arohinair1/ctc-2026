@@ -31,3 +31,10 @@ dist/
 
 # macOS
 .DS_Store
+
+# Quote-aware generated caches and local connection results
+research/quote_aware/*.npz
+research/quote_aware/advisory_stats_raw.json
+research/quote_aware/replay_values.csv
+research/quote_aware/logs/
+auth_result.json

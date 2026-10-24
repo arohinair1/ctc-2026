@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 
 from ctc.execution.automation import SessionPnLTracker
-from ctc.execution.models import Frame, OrderAck
+from ctc.execution.models import Frame, OpenOrder, OrderAck, OrderRequest, OrderType, Side
 from ctc.execution.risk import RiskManager
 from ctc.execution.settings import LiveConfig
 from ctc.execution.state import LiveState
@@ -18,6 +18,7 @@ class FakeClient:
         self.placed = []
         self.cancelled = 0
         self.cancelled_ids = []
+        self.open_orders = []
 
     async def place_order(self, req):
         self.placed.append(req)
@@ -32,7 +33,7 @@ class FakeClient:
         return []
 
     async def get_open_orders(self):
-        return []
+        return self.open_orders
 
 
 def _news(msg):
@@ -63,6 +64,14 @@ def _trader(state, dry_run=True):
     cfg = LiveConfig(api_key="x", dry_run=dry_run)
     risk = RiskManager(cfg.max_order_size_frac, cfg.max_gross_exposure)
     return LiveTrader(client=FakeClient(), state=state, risk=risk, cfg=cfg), cfg
+
+
+def _register_open_order(trader, order_id):
+    req = OrderRequest(symbol="PORT", side=Side.BUY, quantity=1, order_type=OrderType.LIMIT, price=1)
+    intent_id = trader.order_registry.begin_submission(req)
+    trader.order_registry.record_ack(intent_id, OrderAck(order_id=order_id, symbol="PORT", status="accepted"))
+    trader._submitted_order_ids.add(order_id)
+    return OpenOrder(order_id=order_id, symbol="PORT", side=Side.BUY, quantity=1, price=1)
 
 
 def test_propose_generates_sell_on_overpricing():
@@ -151,7 +160,7 @@ def test_shutdown_cancels_only_when_live():
     assert trader.client.cancelled == 0  # dry-run: no cancels
     state.update_exchange_status({"competition_id": "test", "state": "running"})
     trader2, _ = _trader(state, dry_run=False)
-    trader2._submitted_order_ids.add("bot-order")
+    trader2.client.open_orders = [_register_open_order(trader2, "bot-order")]
     asyncio.run(trader2.shutdown())
     assert trader2.client.cancelled == 1
     assert trader2.client.cancelled_ids == ["bot-order"]
@@ -161,9 +170,41 @@ def test_shutdown_still_cancels_bot_orders_when_kill_switch_is_engaged():
     state = _overpriced_state()
     state.update_exchange_status({"competition_id": "test", "state": "running"})
     trader, _ = _trader(state, dry_run=False)
-    trader._submitted_order_ids.add("bot-order")
+    trader.client.open_orders = [_register_open_order(trader, "bot-order")]
     trader.engage_kill_switch()
     asyncio.run(trader.shutdown())
+    assert trader.client.cancelled_ids == ["bot-order"]
+
+
+def test_shutdown_skips_historical_orders_and_preserves_external_orders():
+    trader, _ = _trader(_overpriced_state(), dry_run=False)
+    _register_open_order(trader, "filled-order")
+    open_order = _register_open_order(trader, "open-order")
+    manual_order = OpenOrder(order_id="manual-order", symbol="PORT", side=Side.BUY, quantity=1, price=1)
+    trader.order_registry.preserve_manual_orders([manual_order], manual_authorization=True)
+    # Even an accidentally stale in-memory ID must not establish bot ownership.
+    trader._submitted_order_ids.add(manual_order.order_id)
+    trader.client.open_orders = [open_order, manual_order]
+
+    asyncio.run(trader.shutdown())
+
+    assert trader.client.cancelled_ids == ["open-order"]
+    assert "open-order" not in trader._submitted_order_ids
+    assert not trader.order_registry.orders["filled-order"].cancellation_confirmed
+
+
+def test_shutdown_readback_failure_cancels_only_registered_bot_orders():
+    trader, _ = _trader(_overpriced_state(), dry_run=False)
+    _register_open_order(trader, "bot-order")
+    trader._submitted_order_ids.add("external-order")
+
+    async def failed_readback():
+        raise RuntimeError("readback unavailable")
+
+    trader.client.get_open_orders = failed_readback
+
+    asyncio.run(trader.shutdown())
+
     assert trader.client.cancelled_ids == ["bot-order"]
 
 

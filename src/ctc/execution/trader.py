@@ -257,13 +257,20 @@ class LiveTrader:
         log.warning("manual resume accepted; returning to dry-run rollout checks")
 
     async def shutdown(self, cancel_orders: bool = True) -> None:
-        """Safe shutdown: optionally cancel all resting orders (never in dry-run)."""
+        """Safe shutdown: optionally cancel our resting orders (never in dry-run)."""
         if cancel_orders and not self.cfg.dry_run:
-            for order_id in tuple(self._submitted_order_ids):
+            owned_ids = self._submitted_order_ids.intersection(self.order_registry.orders)
+            try:
+                open_orders = await self.client.get_open_orders()
+                cancel_ids = owned_ids.intersection(order.order_id for order in open_orders)
+            except Exception as exc:  # noqa: BLE001 - still clean up only known bot-owned IDs
+                log.warning("shutdown open-order readback failed (%s)", type(exc).__name__)
+                cancel_ids = owned_ids
+            for order_id in sorted(cancel_ids):
                 try:
                     await self.client.cancel_order(order_id)
-                    if order_id in self.order_registry.orders:
-                        self.order_registry.record_cancel(order_id, confirmed=True)
+                    self.order_registry.record_cancel(order_id, confirmed=True)
+                    self._submitted_order_ids.discard(order_id)
                     log.info("cancelled bot-owned order %s on shutdown", order_id)
                 except Exception as exc:  # noqa: BLE001 - keep safe shutdown progressing
                     log.warning("cancel of bot-owned order %s failed (%s)", order_id, type(exc).__name__)

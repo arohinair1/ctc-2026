@@ -20,7 +20,7 @@ CTC_API_KEY=your_bot_key_here      # secret; never commit
 # --- optional overrides (defaults shown) ---
 # CTC_DRY_RUN=true                 # MUST be false (and --live) to submit orders
 # CTC_KILL_SWITCH=false
-# CTC_HTTP_URL=https://hurricane.cornelltradingcompetition.org
+# CTC_HTTP_URL=https://cornelltradingcompetition.org
 # CTC_MAX_ORDER_SIZE_FRAC=0.25     # per-order cap as fraction of the symbol position limit
 # CTC_MAX_GROSS_EXPOSURE=2000000   # max |notional| across the book ($)
 # CTC_MAX_ORDERS_PER_MIN=50        # below the 60/bot exchange ceiling

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ctc.execution.settings import LiveConfig, load_dotenv
+from ctc.execution.settings import DEFAULT_HTTP_URL, LiveConfig, load_dotenv
 
 
 def test_load_dotenv_parses_and_strips_quotes(tmp_path, monkeypatch):
@@ -42,7 +42,7 @@ def test_redacted_masks_key():
     cfg = LiveConfig(api_key="ABCDEFGHIJ")
     red = cfg.redacted()
     assert "ABCDEFGHIJ" not in str(red)
-    assert red["api_key"] == "ABC…IJ"
+    assert red["api_key"] == "<set>"
     # repr also never leaks the key
     assert "ABCDEFGHIJ" not in repr(cfg)
 
@@ -50,3 +50,10 @@ def test_redacted_masks_key():
 def test_ws_url_derived_from_http():
     cfg = LiveConfig(http_url="https://example.org")
     assert cfg.ws_url == "wss://example.org/ws/v1/market-data"
+
+
+def test_default_host_is_organizer_confirmed_exchange():
+    # starter kit derives WS as https -> wss + /ws/v1/market-data
+    assert DEFAULT_HTTP_URL == "https://cornelltradingcompetition.org"
+    cfg = LiveConfig()
+    assert cfg.ws_url == "wss://cornelltradingcompetition.org/ws/v1/market-data"

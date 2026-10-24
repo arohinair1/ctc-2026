@@ -8,11 +8,11 @@ is left before and during the event. Companion docs: [ARCHITECTURE.md](ARCHITECT
 ## TL;DR for whoever resumes
 
 * Research (valuation + forecasting + backtest) is **done and verified**.
-* The **live stack is built and tested offline**: async exchange client (REST+WS, reconnect,
-  rate limit), live state (seq dedup, season rollover, snapshot resync), risk manager, trader
-  (dry-run/kill-switch gated), recorder/replay, and probe. **128 tests pass; lint clean.**
-* The only blocker to live work is a **valid/active bot key** — the current key returns
-  `401 Invalid API key` (public endpoint works). See [TESTNET.md](TESTNET.md).
+* The **live stack is built and tested**: async exchange client (REST+WS, reconnect, rate
+  limit), live state (seq dedup, season rollover, snapshot resync), risk manager, trader
+  (dry-run/kill-switch gated), recorder/replay, and probe. **131 tests pass; lint clean.**
+  Read-only REST authentication succeeds on the corrected host. One dry-run bot process is
+  connected; the competition is currently `ready`, with no active book. See [TESTNET.md](TESTNET.md).
 * **Do not place/cancel real orders without explicit human approval.** The exact first test
   (1-lot PORT place+cancel, far from market) is written up in [TESTNET.md](TESTNET.md).
 
@@ -42,15 +42,16 @@ Everything is reproducible with the `ctc-*` CLIs: research (`ctc-validate`, `ctc
 | 2 | Load data with `history.py`, run the reference code | ✅ Done | `ctc-eda` reproduces the 69.6% advisory accuracy exactly |
 | 3 | Build a valuation model per company (damage, outages, season losses) | ✅ Done | All 12 symbols; held-out MAE < 1% of start for 10/12 (see below) |
 | 4 | Measure official/wire accuracy and how early each identifies the pattern | ✅ Done | `ctc-forecast-eval` → `forecast_eval.json` |
-| 5 | Sign in on the testnet, join a team, get a bot key | ⛔ Blocked | Key present but exchange returns `401 Invalid API key`; needs active key (see TESTNET.md) |
-| 6 | Connect bot, subscribe to news, place + cancel an order | 🟡 Built | Client+bot implemented & tested offline; place+cancel is the proposed first live test (awaiting key + approval) |
+| 5 | Sign in on the testnet, join a team, get a bot key | ✅ Connected | Read-only authenticated REST works on corrected host (see TESTNET.md) |
+| 6 | Connect bot, subscribe to news, place + cancel an order | 🟡 Running / pending | One dry-run process connected; order round-trip remains untested and needs explicit approval |
 | 7 | Stay connected across season rollovers | 🟡 Built | Reconnect + `on_new_season()` implemented & unit-tested; needs live verification |
-| 8 | Record a season + check with `check_recording.py` | 🟡 Built | `ctc-record` writes a check-compatible JSONL; verify once a live key works |
+| 8 | Record a season + check with `check_recording.py` | 🟡 Built | `ctc-record` writes check-compatible JSONL; full live-season capture remains |
 | 9 | Trade a full testnet season by hand and with the bot | ⛔ Blocked | Depends on 5–8 + explicit approval |
 
-**Summary:** all *research/preparation* items (1–4) are complete and verified; the live-bot
-stack for items 6–8 is **built and tested offline**, blocked only on a valid bot key (5) and
-approval for state-changing actions (9).
+**Summary:** research/preparation items (1–5) are complete and authenticated read-only access
+works. Items 6–8 are implemented, but live recording, a state-changing order round-trip, and
+full-season/rollover verification remain. The competition was `ready` with an empty book at
+the latest check. No state-changing actions have been performed.
 
 ## Model performance (held-out, 600-season split)
 

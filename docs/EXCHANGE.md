@@ -7,7 +7,7 @@ what is written here; update this file when a live session confirms or corrects 
 
 ## Base URLs & auth
 
-* HTTP base: `https://hurricane.cornelltradingcompetition.org` (override via `CTC_HTTP_URL`).
+* HTTP base: `https://cornelltradingcompetition.org` (override via `CTC_HTTP_URL`).
 * REST API is under `/api/v1`. The static case file is **public** at
   `GET /cases/hurricane.json` (no `/api/v1` prefix) — confirmed working (200, 12 symbols).
 * WebSocket: `wss://.../ws/v1/market-data` (derived from the HTTP URL).
@@ -21,19 +21,19 @@ what is written here; update this file when a live session confirms or corrects 
 | Method | Path | Purpose | Status |
 |--------|------|---------|--------|
 | GET | `/cases/hurricane.json` | Static case (limits, symbols) | Confirmed 200 |
-| GET | `/competitions/time` | Server time / round phase | Auth-blocked (401) pending key |
-| GET | `/positions` | Current positions | Auth-blocked (401) pending key |
-| GET | `/orders/open` | Resting orders | Not yet exercised (needs key) |
-| GET | `/orderbook/{symbol}` | Depth snapshot | Not yet exercised |
+| GET | `/competitions/time` | Server time / round phase | Confirmed 200 on corrected host (2026-10-24) |
+| GET | `/positions` | Current positions | Confirmed 200 on corrected host (2026-10-24) |
+| GET | `/orders/open` | Resting orders | Confirmed 200 on corrected host (2026-10-24) |
+| GET | `/orderbook/{symbol}` | Depth snapshot | Confirmed 200; PORT book was empty (2026-10-24) |
 | POST | `/orders` | Place an order | Not yet exercised (gated) |
 | DELETE | `/orders/{id}` | Cancel one order | Not yet exercised (gated) |
 | DELETE | `/orders/all[?symbol=]` | Cancel all (optionally per symbol) | Not yet exercised (gated) |
 | POST | `/etf/{symbol}/create` | Create ETF units | Not yet exercised (gated) |
 | POST | `/etf/{symbol}/redeem` | Redeem ETF units | Not yet exercised (gated) |
 
-> "Auth-blocked (401)" = the request shape is implemented but the current key is rejected;
-> see [TESTNET.md](TESTNET.md). "Not yet exercised" = never called against the live exchange
-> (no valid key and/or awaiting approval).
+> Earlier 401 results were against the obsolete `hurricane.cornelltradingcompetition.org`
+> hostname. The organizer-confirmed host above now authenticates successfully. State-changing
+> endpoints remain gated and have not been exercised.
 
 ### Order payload (`OrderRequest.to_payload`)
 
@@ -80,8 +80,8 @@ cleared); the bot re-subscribes on reconnect.
 
 ## Confirmed vs assumed — action items for the first live session
 
-* **Confirmed:** base URL, `/api/v1` prefix, public case path, custom-UA requirement,
-  `X-API-Key` header.
+* **Confirmed:** corrected base URL, `/api/v1` prefix, public case path, custom-UA
+  requirement, `X-API-Key` header, and authenticated GET access on 2026-10-24.
 * **Assumed / tolerant (verify live):** exact field names on `quote`/`orderbook`/`position`/
   `order` beyond `symbol`/`bid`/`ask`/`quantity`/`price`; the `snapshot` payload layout; the
   ack schema (`order_id` vs `id`, `status`, `filled` vs `filled_quantity`). Parsers accept

@@ -17,38 +17,46 @@ ctc-bot-probe --listen 5      # also listen to the WS for 5s (read-only)
 
 The probe **never** places, cancels, or modifies anything. It is safe to run anytime.
 
-## Last probe result (recorded honestly — not invented)
+## Latest read-only probe
 
-Run on 2026-10-18 against `https://hurricane.cornelltradingcompetition.org`:
+Run on 2026-10-24 against the organizer-confirmed `https://cornelltradingcompetition.org`:
 
 ```json
 {
   "public_case":    { "ok": true,  "symbols": 12 },
-  "auth_time":      { "ok": false, "error": "HTTP 401: {\"detail\":\"Invalid API key\"}" },
-  "auth_positions": { "ok": false, "error": "HTTP 401: {\"detail\":\"Invalid API key\"}" }
+  "auth_time":      { "ok": true },
+  "auth_positions": { "ok": true }
 }
 ```
 
-### Interpretation
+Read-only GETs to `/orders/open` and `/orderbook/PORT` also succeeded: there were no open
+orders and the PORT book was empty. `/competitions/time` returned:
 
-* **Public path works.** `GET /cases/hurricane.json` returns 200 with all 12 symbols. This
-  proves the base URL, the required custom `User-Agent`, and the HTTP transport are all
-  correct (the exchange refuses urllib's default UA; ours is accepted).
-* **Authenticated path is blocked by the credential, not the code.** Both authenticated
-  GETs return `401 Invalid API key`. The key in `.env` is well-formed (43 chars, no quotes
-  or whitespace) and is sent in the `X-API-Key` header exactly as the packet specifies.
-* An earlier WebSocket attempt returned `403` for the same reason (key rejected at the
-  front door).
+```json
+{
+  "competition_id": "c34e2d91-863b-4790-a39d-ad03d6e36864",
+  "state": "ready",
+  "fictional_time": "2026-08-03T09:30:00",
+  "elapsed_active_seconds": 0
+}
+```
 
-**This is a credential blocker.** Nothing in the client can fix a key the exchange does not
-recognize. Required human action before live work:
+Positions were flat. The season had not started running at the time of the check.
 
-1. Confirm the team is registered and the bot key is **issued and active** for the testnet
-   (captain/portal step).
-2. Re-issue or copy the key into `.env` as `CTC_API_KEY=<key>` (no quotes).
-3. Re-run `ctc-bot-probe` and confirm `auth_time.ok == true`.
+### Host correction and running bot
 
-Until `auth_time.ok == true`, do not attempt the order test below — it will only 401.
+The configured host is `https://cornelltradingcompetition.org`; the WS URL derived from it
+is `wss://cornelltradingcompetition.org/ws/v1/market-data`, matching the starter-kit path.
+The earlier 401/403 results were against the obsolete `hurricane.cornelltradingcompetition.org`
+host, not evidence of an invalid credential. The API key remains in local `.env` and was
+not printed or logged.
+
+One existing `ctc-bot --step-interval 2` process was found; no duplicate bot or WS client was
+started. It has an established TLS TCP socket to the exchange's Cloudflare edge. Its
+inherited environment has no `CTC_DRY_RUN` override, so the code default is `true`. The
+provided running-session context says it subscribed to `news` and `quotes`; fresh terminal
+logs/frame counts could not be read from this shell. Since competition state is `ready` and
+the PORT book is empty, there is no live book or active season to trade against yet.
 
 ## First state-changing test — PROPOSED, AWAITING APPROVAL
 

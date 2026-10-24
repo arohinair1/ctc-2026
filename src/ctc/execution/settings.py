@@ -21,7 +21,7 @@ from pathlib import Path
 
 from ctc.config import REPO_ROOT
 
-DEFAULT_HTTP_URL = "https://hurricane.cornelltradingcompetition.org"
+DEFAULT_HTTP_URL = "https://cornelltradingcompetition.org"
 USER_AGENT = "ctc-2026-bot/0.1 (+https://github.com/arohinair1/ctc-2026)"
 
 
@@ -119,7 +119,7 @@ class LiveConfig:
     def redacted(self) -> dict[str, object]:
         """A safe-to-log view with the key masked."""
         key = self.api_key
-        masked = f"{key[:3]}…{key[-2:]}" if len(key) > 6 else ("<set>" if key else "<missing>")
+        masked = "<set>" if key else "<missing>"
         return {
             "http_url": self.http_url,
             "ws_url": self.ws_url,

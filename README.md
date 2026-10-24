@@ -21,7 +21,7 @@ pip install -e ".[dev,live]"      # dev = tests/lint, live = websocket client
 # Extract hurricane-season-research.zip into data/raw/ (not committed), or point to it:
 export CTC_DATA_DIR=/path/to/history    # folder containing manifest.json
 
-pytest -q                         # 128 tests (data-backed ones auto-skip without the data)
+pytest -q                         # 131 tests (data-backed ones auto-skip without the data)
 ```
 
 ## Run the bot (safe by default)

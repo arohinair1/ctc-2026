@@ -93,10 +93,19 @@ state-changing exchange call. The first such action is the single place+cancel t
 The case packet and starter-kit client currently establish `/positions`, `/orders/open`,
 order POST/DELETE and market-data frames. They do **not** document a starting-equity or
 realized-fills endpoint, fill execution IDs/prices in a complete history, or an owner field
-on open orders. The market trade tape cannot prove which team filled an order. Therefore the
-live runner has no verified provider for `SessionPnLTracker.update()` or complete fill
-accounting yet; missing input keeps `pnl_complete=false`. The registry can prove ownership
-of orders created by this process from their acknowledged exchange IDs, but cannot claim
-ownership of legacy/manual/team orders. Do not arm live mode until the organizers document
-the missing account/execution semantics and a controlled live verification establishes
-them.
+on open orders. The market trade tape cannot prove which team filled an order. The runner
+therefore has no built-in authoritative accounting source; without one, `pnl_complete=false`
+and live mode remains blocked.
+
+A team may provide a verified async adapter via `CTC_ACCOUNTING_PROVIDER=module:function`.
+The callable receives the configured `ExchangeClient` and must return
+`VerifiedPnLSnapshot(starting_equity, realized_pnl, unrealized_pnl, as_of,
+source_verified, execution_history_complete, executions)`, with every fill linked to a
+bot-owned exchange order ID and a unique execution ID, quantity, and price. The runner
+validates freshness, completeness, and registry ownership, and refreshes it every five
+seconds. `source_verified` is a trust assertion by that adapter; it must only be true when
+the values come from an authoritative, independently checked account source. Do not infer
+realized PnL from quote or trade-tape data. The registry can prove ownership of orders
+created by this process from acknowledged exchange IDs, but cannot claim ownership of
+legacy/manual/team orders. Until the organizers or team provide and verify such an
+authoritative source, this gate must remain closed.

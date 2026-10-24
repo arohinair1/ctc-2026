@@ -14,6 +14,7 @@ from ctc.execution.automation import (
     SafetySnapshot,
     SessionPnLTracker,
     TransitionPhase,
+    VerifiedExecution,
 )
 from ctc.execution.models import OpenOrder, OrderAck, OrderRequest, OrderType, Side
 
@@ -38,6 +39,9 @@ def test_registry_persists_owned_id_and_partial_execution(tmp_path):
     assert restored.ownership_verified is False  # restart always requires reconciliation
     assert restored.reconcile([OpenOrder("ord-1", "PORT", Side.BUY, 3, 40.0, filled=1)])
     assert restored.known_open_ids() == ("ord-1",)
+    assert restored.reconcile_executions(
+        [VerifiedExecution("ord-1", "fill-1", 1, 39.5)], history_complete=True
+    )
     assert restored.execution_records_complete
 
 
@@ -48,6 +52,39 @@ def test_registry_does_not_claim_fill_accounting_from_quantity_only():
     registry.reconcile([OpenOrder("ord-1", "PORT", Side.BUY, 3, 40.0, filled=1)])
     assert registry.ownership_verified
     assert not registry.execution_records_complete
+
+
+def test_verified_execution_history_updates_owned_partial_fill():
+    registry = BotOrderRegistry()
+    intent = registry.begin_submission(_request())
+    registry.record_ack(intent, OrderAck("ord-1", "PORT", "accepted"))
+    assert registry.reconcile_executions(
+        [VerifiedExecution("ord-1", "fill-1", 1, 39.5)], history_complete=True
+    )
+    assert registry.execution_records_complete
+    assert registry.orders["ord-1"].filled_quantity == 1
+
+
+def test_incomplete_or_unowned_execution_history_fails_closed():
+    registry = BotOrderRegistry()
+    assert not registry.reconcile_executions([], history_complete=False)
+    assert not registry.reconcile_executions(
+        [VerifiedExecution("manual-order", "fill-1", 1, 39.5)], history_complete=True
+    )
+    assert not registry.execution_records_complete
+
+
+def test_execution_test_attempt_and_evidence_survive_restart(tmp_path):
+    path = tmp_path / "registry.json"
+    registry = BotOrderRegistry(path)
+    registry.begin_execution_test()
+    evidence = {"order_id": "test-1", "execution_integrity": True}
+    registry.record_execution_test_result(evidence)
+    restored = BotOrderRegistry(path)
+    assert restored.execution_test_attempted
+    assert restored.execution_test_result == evidence
+    with pytest.raises(OrderRegistryError, match="already attempted"):
+        restored.begin_execution_test()
 
 
 def test_registry_rejects_unowned_order_and_unknown_cancel(tmp_path):

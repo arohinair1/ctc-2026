@@ -53,6 +53,14 @@ without execution price is reconciled as quantity only and does not make PnL com
 `SessionPnLTracker` requires a fresh, verified starting equity plus realized and unrealized
 PnL snapshot and fails closed on missing, stale or inconsistent input.
 
+The runner accepts an optional team-owned async accounting adapter configured as
+`CTC_ACCOUNTING_PROVIDER=module:function`. It receives the existing client and returns the
+typed `VerifiedPnLSnapshot` defined in `ctc.execution.automation`, including a complete
+execution-history flag and records tied to acknowledged bot order IDs. No exchange endpoint
+is assumed for this adapter. The runner does not reach live eligibility until the adapter
+provides a fresh verified snapshot and the persistent registry reconciles every fill.
+The completeness assertion is refreshed after restart; persisted state alone is not evidence.
+
 > Earlier 401 results were against the obsolete `hurricane.cornelltradingcompetition.org`
 > hostname. The organizer-confirmed host above now authenticates successfully. State-changing
 > endpoints remain gated and have not been exercised.

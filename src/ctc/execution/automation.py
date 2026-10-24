@@ -14,7 +14,7 @@ import os
 import tempfile
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -57,6 +57,29 @@ class OwnedOrder:
 
 class OrderRegistryError(RuntimeError):
     """Registry is incomplete or conflicts with exchange state."""
+
+
+@dataclass(frozen=True)
+class VerifiedExecution:
+    """An authoritative fill record tied to an exchange order ID."""
+
+    order_id: str
+    execution_id: str
+    quantity: float
+    price: float
+
+
+@dataclass(frozen=True)
+class VerifiedPnLSnapshot:
+    """Complete account snapshot supplied by an independently verified provider."""
+
+    starting_equity: float | None
+    realized_pnl: float | None
+    unrealized_pnl: float | None
+    as_of: float
+    source_verified: bool
+    execution_history_complete: bool
+    executions: tuple[VerifiedExecution, ...] = ()
 
 
 class ProcessLease:
@@ -112,6 +135,9 @@ class BotOrderRegistry:
         self.pending_intents: dict[str, dict[str, Any]] = {}
         self.unresolved: set[str] = set()
         self.last_reconciliation_complete = False
+        self.execution_history_complete = False
+        self.execution_test_attempted = False
+        self.execution_test_result: dict[str, Any] | None = None
         if self.path and self.path.exists():
             self._load()
 
@@ -122,6 +148,9 @@ class BotOrderRegistry:
             self.orders = {k: OwnedOrder(**v) for k, v in data.get("orders", {}).items()}
             self.pending_intents = data.get("pending_intents", {})
             self.unresolved = set(data.get("unresolved", []))
+            self.execution_history_complete = False  # refreshed from the provider on every start
+            self.execution_test_attempted = bool(data.get("execution_test_attempted", False))
+            self.execution_test_result = data.get("execution_test_result")
             self.last_reconciliation_complete = False  # always reconcile after restart
         except (OSError, ValueError, TypeError, KeyError) as exc:
             raise OrderRegistryError("persistent order registry is unreadable") from exc
@@ -135,6 +164,9 @@ class BotOrderRegistry:
             "orders": {k: asdict(v) for k, v in self.orders.items()},
             "pending_intents": self.pending_intents,
             "unresolved": sorted(self.unresolved),
+            "execution_history_complete": self.execution_history_complete,
+            "execution_test_attempted": self.execution_test_attempted,
+            "execution_test_result": self.execution_test_result,
         }
         fd, tmp_name = tempfile.mkstemp(prefix=".order-registry-", dir=self.path.parent)
         try:
@@ -216,6 +248,49 @@ class BotOrderRegistry:
         order.status = "filled" if order.filled_quantity >= order.quantity else "partially_filled"
         self._save()
 
+    def reconcile_executions(
+        self, executions: Iterable[VerifiedExecution], *, history_complete: bool
+    ) -> bool:
+        """Apply authoritative fills; an unknown order ID makes reconciliation fail."""
+        self.execution_history_complete = False
+        if not history_complete:
+            self._save()
+            return False
+        try:
+            for execution in executions:
+                self.record_execution(
+                    execution.order_id,
+                    execution.execution_id,
+                    execution.quantity,
+                    execution.price,
+                )
+        except (OrderRegistryError, TypeError, ValueError):
+            self.last_reconciliation_complete = False
+            self._save()
+            return False
+        self.execution_history_complete = True
+        self._save()
+        return self.execution_records_complete
+
+    def begin_execution_test(self) -> None:
+        """Persist the one-shot PORT test attempt before any order submission."""
+        if self.execution_test_attempted:
+            raise OrderRegistryError("PORT execution test was already attempted")
+        self.execution_test_attempted = True
+        self._save()
+
+    def record_execution_test_result(self, evidence: dict[str, Any]) -> None:
+        if not self.execution_test_attempted:
+            raise OrderRegistryError("PORT test result has no persisted attempt")
+        self.execution_test_result = dict(evidence)
+        self._save()
+
+    def reset_execution_test(self) -> None:
+        """Allow the one-shot test to run in a new competition season only."""
+        self.execution_test_attempted = False
+        self.execution_test_result = None
+        self._save()
+
     def record_cancel(self, order_id: str, *, confirmed: bool) -> None:
         order = self.orders.get(order_id)
         if order is None:
@@ -276,6 +351,8 @@ class BotOrderRegistry:
 
     @property
     def execution_records_complete(self) -> bool:
+        if not self.execution_history_complete:
+            return False
         for order in self.orders.values():
             recorded = sum(float(fill["quantity"]) for fill in order.executions)
             if order.status == "filled":
@@ -475,6 +552,8 @@ class ExecutionTestEvidence:
     absent_after_cancel: bool
     port_position_before: int
     port_position_after: int
+    competition_id: str | None = None
+    execution_integrity: bool = True
 
     @property
     def passed(self) -> bool:
@@ -493,6 +572,7 @@ class ExecutionTestEvidence:
                 self.cancellation_acknowledged,
                 self.absent_after_cancel,
                 self.port_position_before == self.port_position_after,
+                self.execution_integrity,
             )
         )
 
@@ -524,6 +604,12 @@ class AutomaticTransition:
             return
         self.execution_test_passed = True
         self.reason = f"execution test passed for exchange order {evidence.order_id}"
+
+    def fail_execution_test(self, reason: str) -> None:
+        if self.phase is not TransitionPhase.EXECUTION_TEST:
+            raise RuntimeError("execution test result is only accepted in EXECUTION_TEST")
+        self.phase = TransitionPhase.SAFE_MODE
+        self.reason = reason
 
     def tick(self, snapshot: SafetySnapshot, *, observe: bool = False) -> TransitionPhase:
         self._last_snapshot = snapshot

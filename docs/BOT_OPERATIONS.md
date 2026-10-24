@@ -75,10 +75,15 @@ ctc-bot --live                # the --live flag AND CTC_DRY_RUN=false
 ```
 
 The automatic gate defaults off. The case packet/starter kit does not provide a verified
-starting-equity and realized-fill history source, so the production PnL gate remains
-incomplete and this process cannot reach `LIVE`. The PORT test is authorized only as the
-specific one-lot place/cancel described in [TESTNET.md](TESTNET.md), when executable quotes
-exist; no such test has yet run. Do not set these variables now.
+starting-equity and realized-fill history source, so without a separately verified team
+adapter (`CTC_ACCOUNTING_PROVIDER=module:function`) the production PnL gate remains
+incomplete and this process cannot reach `LIVE`. The runner persists a one-shot PORT test
+attempt and requires an acknowledged order ID, matching open-order readback, acknowledged
+cancellation, absence after cancellation, and unchanged PORT position. Failed or incomplete
+attempt evidence enters safe mode and cannot be silently retried. The test is the specific
+one-lot place/cancel described in [TESTNET.md](TESTNET.md), only when executable quotes
+exist; the new code has only been exercised with mocks here, not against the live exchange.
+Do not enable live configuration until the adapter and all documented gates are verified.
 
 ## Persistent runtime state
 
